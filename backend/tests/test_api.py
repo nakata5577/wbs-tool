@@ -1,4 +1,5 @@
 """Sub #28: FastAPI 初期設定（CORS・ヘルスチェック・グローバル例外ハンドラー）"""
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
