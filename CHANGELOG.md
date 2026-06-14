@@ -9,4 +9,4 @@
 
 ### Added
 - バックエンド基盤: SQLAlchemy 2.x モデル定義（Project/Task/Milestone/Comment/Notification）と Alembic 初期マイグレーション (#10)
-- FastAPI 初期設定: CORS・`GET /health`・グローバル例外ハンドラー（404/422）(#10)
+- FastAPI 初期設定: CORS・`GET /health`・グローバル例外ハンドラー（404/422 はFastAPIデフォルト）(#10)
