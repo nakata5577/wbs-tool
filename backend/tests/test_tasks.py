@@ -208,6 +208,27 @@ async def test_post_task_not_found_project_returns_404():
     assert response.status_code == 404
 
 
+@pytest.mark.asyncio
+async def test_post_task_with_cross_project_parent_id_returns_400():
+    """POST /api/projects/{id}/tasks — 別プロジェクトの parent_id は 400"""
+    async with AsyncClient(transport=TRANSPORT, base_url=BASE_URL) as client:
+        # given
+        project_a_id = await _create_project(client, "プロジェクトA")
+        project_b_id = await _create_project(client, "プロジェクトB")
+        task_in_b = await client.post(
+            f"/api/projects/{project_b_id}/tasks",
+            json={"name": "プロジェクトBのタスク"},
+        )
+        task_b_id = task_in_b.json()["id"]
+        # when — プロジェクトAのタスクに別プロジェクトBのタスクを親に指定
+        response = await client.post(
+            f"/api/projects/{project_a_id}/tasks",
+            json={"name": "不正タスク", "parent_id": task_b_id},
+        )
+    # then
+    assert response.status_code == 400
+
+
 # ── Sub #34: PATCH /api/tasks/{id} ───────────────────────────────────────────
 
 
@@ -255,6 +276,44 @@ async def test_patch_task_updates_status():
     body = response.json()
     assert body["status"] == "進行中"
     assert body["name"] == "ステータス更新タスク"
+
+
+@pytest.mark.asyncio
+async def test_patch_task_clears_nullable_field():
+    """PATCH /api/tasks/{id} — nullable フィールドを null 送信でクリアできる（200）"""
+    async with AsyncClient(transport=TRANSPORT, base_url=BASE_URL) as client:
+        # given
+        project_id = await _create_project(client)
+        create_res = await client.post(
+            f"/api/projects/{project_id}/tasks",
+            json={"name": "担当者付きタスク", "assignee": "田中"},
+        )
+        task_id = create_res.json()["id"]
+        # when — assignee を null で明示クリア
+        response = await client.patch(
+            f"/api/tasks/{task_id}",
+            json={"assignee": None},
+        )
+    # then — 422 ではなく 200 が返り、assignee が null になる
+    assert response.status_code == 200
+    assert response.json()["assignee"] is None
+
+
+@pytest.mark.asyncio
+async def test_patch_task_empty_body_returns_422():
+    """PATCH /api/tasks/{id} — 空ボディは 422"""
+    async with AsyncClient(transport=TRANSPORT, base_url=BASE_URL) as client:
+        # given
+        project_id = await _create_project(client)
+        create_res = await client.post(
+            f"/api/projects/{project_id}/tasks",
+            json={"name": "テストタスク"},
+        )
+        task_id = create_res.json()["id"]
+        # when
+        response = await client.patch(f"/api/tasks/{task_id}", json={})
+    # then
+    assert response.status_code == 422
 
 
 @pytest.mark.asyncio

@@ -23,9 +23,9 @@ FastAPI が提供する REST API のエンドポイント・リクエスト/レ�
 flowchart LR
     Main["app/main.py\n(FastAPI app\nCORS + ルーター登録\nGET /health)"] --> Projects["routers/projects.py\n/api/projects/*"]
     Main --> Tasks["routers/tasks.py\n/api/tasks/*"]
-    Main --> Milestones["routers/milestones.py\n/api/milestones/*"]
-    Main --> Comments["routers/comments.py\n/api/comments/*"]
-    Main --> Notifications["routers/notifications.py\n/api/notifications/*"]
+    Main -.-> Milestones["routers/milestones.py\n/api/milestones/*\n（未実装）"]
+    Main -.-> Comments["routers/comments.py\n/api/comments/*\n（未実装）"]
+    Main -.-> Notifications["routers/notifications.py\n/api/notifications/*\n（未実装）"]
 ```
 
 ### エンドポイント一覧
@@ -40,7 +40,7 @@ flowchart LR
 | DELETE | `/api/projects/{id}` | プロジェクト削除（論理） |
 | GET | `/api/projects/{id}/tasks` | タスク一覧（階層付き） |
 | POST | `/api/projects/{id}/tasks` | タスク作成 |
-| GET | `/api/tasks/{id}` | タスク詳細 |
+| GET | `/api/tasks/{id}` | タスク詳細（後続 Issue） |
 | PATCH | `/api/tasks/{id}` | タスク部分更新（progress/status/name 等） |
 | DELETE | `/api/tasks/{id}` | タスク削除（論理・子孫連鎖） |
 | PATCH | `/api/tasks/{id}/sort` | 並び順変更（sort_order 更新） |

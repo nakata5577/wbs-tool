@@ -62,6 +62,19 @@ def create_task(
 ) -> Task:
     _get_active_project_or_404(project_id, db)
 
+    if body.parent_id is not None:
+        parent = (
+            db.query(Task)
+            .filter(
+                Task.id == body.parent_id,
+                Task.project_id == project_id,
+                Task.is_deleted.is_(False),
+            )
+            .first()
+        )
+        if parent is None:
+            raise HTTPException(status_code=400, detail="parent_id が無効です")
+
     sort_order = body.sort_order
     if sort_order is None:
         max_sort = (

@@ -26,7 +26,7 @@ class TaskUpdate(BaseModel):
 
     @model_validator(mode="after")
     def at_least_one_field(self) -> "TaskUpdate":
-        if all(value is None for value in self.__dict__.values()):
+        if not self.model_fields_set:
             raise ValueError("少なくとも1つのフィールドを指定してください")
         return self
 
