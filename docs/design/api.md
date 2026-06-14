@@ -2,7 +2,7 @@
 title: API 設計
 area: api
 status: active
-relatedIssues: [10, 11]
+relatedIssues: [10, 11, 13]
 updated: 2026-06-14
 kind: api
 ---
@@ -23,9 +23,9 @@ FastAPI が提供する REST API のエンドポイント・リクエスト/レ�
 flowchart LR
     Main["app/main.py\n(FastAPI app\nCORS + ルーター登録\nGET /health)"] --> Projects["routers/projects.py\n/api/projects/*"]
     Main --> Tasks["routers/tasks.py\n/api/tasks/*"]
-    Main --> Milestones["routers/milestones.py\n/api/milestones/*"]
-    Main --> Comments["routers/comments.py\n/api/comments/*"]
-    Main --> Notifications["routers/notifications.py\n/api/notifications/*"]
+    Main -.-> Milestones["routers/milestones.py\n/api/milestones/*\n（未実装）"]
+    Main -.-> Comments["routers/comments.py\n/api/comments/*\n（未実装）"]
+    Main -.-> Notifications["routers/notifications.py\n/api/notifications/*\n（未実装）"]
 ```
 
 ### エンドポイント一覧
@@ -40,10 +40,10 @@ flowchart LR
 | DELETE | `/api/projects/{id}` | プロジェクト削除（論理） |
 | GET | `/api/projects/{id}/tasks` | タスク一覧（階層付き） |
 | POST | `/api/projects/{id}/tasks` | タスク作成 |
-| GET | `/api/tasks/{id}` | タスク詳細 |
-| PUT | `/api/tasks/{id}` | タスク更新（進捗・ステータス等） |
-| DELETE | `/api/tasks/{id}` | タスク削除（論理） |
-| POST | `/api/tasks/{id}/reorder` | タスク並び替え（sort_order 更新） |
+| GET | `/api/tasks/{id}` | タスク詳細（後続 Issue） |
+| PATCH | `/api/tasks/{id}` | タスク部分更新（progress/status/name 等） |
+| DELETE | `/api/tasks/{id}` | タスク削除（論理・子孫連鎖） |
+| PATCH | `/api/tasks/{id}/sort` | 並び順変更（sort_order 更新） |
 | GET | `/api/projects/{id}/milestones` | マイルストーン一覧 |
 | POST | `/api/projects/{id}/milestones` | マイルストーン作成 |
 | GET | `/api/milestones/{id}` | マイルストーン詳細 |
@@ -79,8 +79,11 @@ sequenceDiagram
 
 - **リソース中心の REST 設計**: タスクはプロジェクト配下（`/projects/{id}/tasks`）で作成し、個別操作は `/tasks/{id}` で行う（プロジェクトIDの再指定不要）。
 - **DELETE は 204 No Content**: 論理削除のため DB には残るが、クライアントには削除完了として返す。
-- **PATCH（部分更新）を使用**: プロジェクト更新は `PATCH /api/projects/{id}`（name/description のみ Optional）。全フィールド送信を強制する PUT より柔軟。
+- **PATCH（部分更新）を使用**: プロジェクト更新は `PATCH /api/projects/{id}`（name/description のみ Optional）。タスク更新も同様に `PATCH /api/tasks/{id}`（全フィールド Optional）。全フィールド送信を強制する PUT より柔軟。
 - **同期 SQLAlchemy セッション**: async ドライバー（aiosqlite 等）は導入しない。FastAPI の `Depends(get_db)` で同期セッションを注入し、テストでは依存を上書き（in-memory SQLite）してスピードを確保。
 - **ページネーション**: Issue #11 時点では全件返却（ページネーションなし）。社内ツールで大規模データを想定しないため、後続 Issue でオフセットベース（`?skip=0&limit=100`）を追加する予定。
 - **通知はサーバープッシュしない**: WebSocket・SSE は初期スコープ外。ポーリング（画面描画時に GET /api/notifications）で対応。
 - **GET /projects/{id}（詳細）は Issue #11 スコープ外**: AC5 の「詳細 API」は記述ミス。PATCH/DELETE の 404 のみカバー。詳細エンドポイントは後続 Issue で実装する。
+- **GET タスク一覧はフラット配列＋parent_id（Issue #13）**: ネスト構造は Pydantic モデルの再帰定義が必要で複雑度が上がる。フロント側で parent_id を使い children に再構成する方式を採用（変更コストが低い）。
+- **DELETE 連鎖論理削除は Python 再帰（Issue #13）**: SQLite の WITH RECURSIVE より可読性が高く、テストも書きやすい。WBS の深さが極端に大きくなる想定はないためパフォーマンス上の問題は無い。
+- **並び順変更は PATCH /api/tasks/{id}/sort（Issue #13）**: 「sort_order の部分更新」なので PATCH が意味的に適切。旧設計書（POST /reorder）から修正。
