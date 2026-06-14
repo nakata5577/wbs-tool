@@ -48,6 +48,7 @@ backend/*.py[cod]
 backend/.pytest_cache/
 backend/.ruff_cache/
 backend/uv.lock
+backend/*.db
 
 # ── Playwright ──
 frontend/playwright-report/

@@ -1,8 +1,8 @@
 ---
 title: API 設計
 area: api
-status: draft
-relatedIssues: []
+status: active
+relatedIssues: [10]
 updated: 2026-06-14
 kind: api
 ---
@@ -21,8 +21,7 @@ FastAPI が提供する REST API のエンドポイント・リクエスト/レ�
 
 ```mermaid
 flowchart LR
-    Main["app/main.py\n(FastAPI app\nCORS + ルーター登録)"] --> Health["routers/health.py\nGET /health"]
-    Main --> Projects["routers/projects.py\n/api/projects/*"]
+    Main["app/main.py\n(FastAPI app\nCORS + ルーター登録\nGET /health)"] --> Projects["routers/projects.py\n/api/projects/*"]
     Main --> Tasks["routers/tasks.py\n/api/tasks/*"]
     Main --> Milestones["routers/milestones.py\n/api/milestones/*"]
     Main --> Comments["routers/comments.py\n/api/comments/*"]

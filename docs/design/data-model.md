@@ -1,8 +1,8 @@
 ---
 title: データモデル設計
 area: data-model
-status: draft
-relatedIssues: []
+status: active
+relatedIssues: [10]
 updated: 2026-06-14
 kind: data
 ---
