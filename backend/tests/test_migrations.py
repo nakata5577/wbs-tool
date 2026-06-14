@@ -1,4 +1,5 @@
 """Sub #27: SQLAlchemy モデル定義・Alembic 初期マイグレーション"""
+
 import os
 import subprocess
 from pathlib import Path

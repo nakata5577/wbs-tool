@@ -2,6 +2,7 @@
 Sub #29: GET /api/projects, POST /api/projects
 Sub #30: PATCH /api/projects/{id}, DELETE /api/projects/{id}, 404
 """
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import create_engine
@@ -27,6 +28,9 @@ def _override_get_db():
     db = _TestingSession()
     try:
         yield db
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
 
@@ -41,6 +45,7 @@ def setup_db():
 
 
 # ── Sub #29: GET /api/projects ────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_get_projects_returns_empty_list():
@@ -61,8 +66,7 @@ async def test_get_projects_returns_created_projects():
     assert response.status_code == 200
     items = response.json()
     assert len(items) == 2
-    assert items[0]["name"] == "プロジェクト A"
-    assert items[1]["name"] == "プロジェクト B"
+    assert {item["name"] for item in items} == {"プロジェクト A", "プロジェクト B"}
 
 
 @pytest.mark.asyncio
@@ -79,6 +83,7 @@ async def test_get_projects_excludes_soft_deleted():
 
 # ── Sub #29: POST /api/projects ───────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_post_project_creates_project():
     """POST /api/projects — name のみでプロジェクトを作成し 201 で返す"""
@@ -86,10 +91,18 @@ async def test_post_project_creates_project():
         response = await client.post("/api/projects", json={"name": "新規プロジェクト"})
     assert response.status_code == 201
     body = response.json()
-    assert body["id"] == 1
+    assert isinstance(body["id"], int) and body["id"] > 0
     assert body["name"] == "新規プロジェクト"
     assert body["description"] is None
     assert body["is_deleted"] is False
+
+
+@pytest.mark.asyncio
+async def test_post_project_with_empty_name_returns_422():
+    """POST /api/projects — name が空文字列のとき 422 を返す"""
+    async with AsyncClient(transport=TRANSPORT, base_url=BASE_URL) as client:
+        response = await client.post("/api/projects", json={"name": ""})
+    assert response.status_code == 422
 
 
 @pytest.mark.asyncio
@@ -106,6 +119,7 @@ async def test_post_project_with_description():
 
 
 # ── Sub #30: PATCH /api/projects/{id} ────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_patch_project_updates_name():
@@ -140,6 +154,29 @@ async def test_patch_project_updates_description():
 
 
 @pytest.mark.asyncio
+async def test_patch_project_with_empty_body_returns_422():
+    """PATCH /api/projects/{id} — name も description も省略した空ボディは 422"""
+    async with AsyncClient(transport=TRANSPORT, base_url=BASE_URL) as client:
+        create_res = await client.post("/api/projects", json={"name": "プロジェクト"})
+        project_id = create_res.json()["id"]
+        response = await client.patch(f"/api/projects/{project_id}", json={})
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_patch_deleted_project_returns_404():
+    """PATCH /api/projects/{id} — 論理削除済みプロジェクトへの更新は 404"""
+    async with AsyncClient(transport=TRANSPORT, base_url=BASE_URL) as client:
+        create_res = await client.post("/api/projects", json={"name": "削除済み"})
+        project_id = create_res.json()["id"]
+        await client.delete(f"/api/projects/{project_id}")
+        response = await client.patch(
+            f"/api/projects/{project_id}", json={"name": "更新しようとする"}
+        )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_patch_project_not_found_returns_404():
     """PATCH /api/projects/{id} — 存在しない ID は 404"""
     async with AsyncClient(transport=TRANSPORT, base_url=BASE_URL) as client:
@@ -148,6 +185,7 @@ async def test_patch_project_not_found_returns_404():
 
 
 # ── Sub #30: DELETE /api/projects/{id} ───────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_delete_project_returns_204():

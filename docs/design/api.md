@@ -81,6 +81,6 @@ sequenceDiagram
 - **DELETE は 204 No Content**: 論理削除のため DB には残るが、クライアントには削除完了として返す。
 - **PATCH（部分更新）を使用**: プロジェクト更新は `PATCH /api/projects/{id}`（name/description のみ Optional）。全フィールド送信を強制する PUT より柔軟。
 - **同期 SQLAlchemy セッション**: async ドライバー（aiosqlite 等）は導入しない。FastAPI の `Depends(get_db)` で同期セッションを注入し、テストでは依存を上書き（in-memory SQLite）してスピードを確保。
-- **ページネーション**: 初期リリースはシンプルにオフセットベース（`?skip=0&limit=100`）。大規模データが想定されない社内ツールのため。
+- **ページネーション**: Issue #11 時点では全件返却（ページネーションなし）。社内ツールで大規模データを想定しないため、後続 Issue でオフセットベース（`?skip=0&limit=100`）を追加する予定。
 - **通知はサーバープッシュしない**: WebSocket・SSE は初期スコープ外。ポーリング（画面描画時に GET /api/notifications）で対応。
 - **GET /projects/{id}（詳細）は Issue #11 スコープ外**: AC5 の「詳細 API」は記述ミス。PATCH/DELETE の 404 のみカバー。詳細エンドポイントは後続 Issue で実装する。

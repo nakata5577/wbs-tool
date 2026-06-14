@@ -11,7 +11,7 @@ router = APIRouter(prefix="/api/projects", tags=["projects"])
 def _get_active_project_or_404(project_id: int, db: Session) -> Project:
     project = (
         db.query(Project)
-        .filter(Project.id == project_id, Project.is_deleted == False)  # noqa: E712
+        .filter(Project.id == project_id, Project.is_deleted.is_(False))
         .first()
     )
     if project is None:
@@ -21,7 +21,7 @@ def _get_active_project_or_404(project_id: int, db: Session) -> Project:
 
 @router.get("", response_model=list[ProjectResponse])
 def list_projects(db: Session = Depends(get_db)) -> list[Project]:
-    return db.query(Project).filter(Project.is_deleted == False).all()  # noqa: E712
+    return db.query(Project).filter(Project.is_deleted.is_(False)).all()
 
 
 @router.post("", response_model=ProjectResponse, status_code=201)
