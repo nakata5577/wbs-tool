@@ -2,7 +2,7 @@
 title: UI/画面設計
 area: ui
 status: active
-relatedIssues: [12]
+relatedIssues: [12, 14]
 updated: 2026-06-14
 kind: ui
 ---
@@ -204,6 +204,107 @@ UI 変更時は `frontend-reviewer` でスクリーンショットを取得し `
 cd frontend && npx shadcn add dialog input textarea label skeleton
 ```
 
+## WBS エディタ（Issue #14）
+
+### 画面構成・ワイヤーフレーム
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ WBS エディタ                        [全展開] [全折りたたみ] │
+│                                              [+ タスク追加] │
+├──────┬────────────────────────────┬──────────┬──────────┤
+│ 展開  │ タスク名                    │ ステータス │  削除     │
+├──────┼────────────────────────────┼──────────┼──────────┤
+│  ▼   │ タスク A                    │  未着手   │  [🗑]   │
+│      │   ▼ 子タスク A1             │  進行中   │  [🗑]   │
+│      │     └ 孫タスク A1-1         │  完了     │  [🗑]   │
+│  ▶   │ タスク B（折りたたみ）         │  未着手   │  [🗑]   │
+├──────┴────────────────────────────┴──────────┴──────────┤
+│ ※ 空状態：                                                │
+│  ┌───────────────────────────────────────────────────┐  │
+│  │  タスクがありません。[+ 最初のタスクを追加する]          │  │
+│  └───────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────┘
+```
+
+**インライン編集（タスク名クリック時）:**
+```
+│  ▼   │ [____________編集中__________] │  未着手   │  [🗑]   │
+│      │  ↳ Enter で確定 / Esc でキャンセル                   │
+```
+
+**Enter で新規行追加（現在フォーカス行の直下）:**
+```
+│  ▼   │ タスク A                        │  未着手   │  [🗑]   │
+│      │   [__新しいタスク名を入力中______] │           │  [🗑]   │  ← 追加
+│      │   ▼ 子タスク A1                 │  進行中   │  [🗑]   │
+```
+
+### コンポーネント分割
+
+| コンポーネント | 種別 | 責務 |
+|------------|------|------|
+| `app/projects/[id]/wbs/page.tsx` | Server Component | タスク一覧の初期データ取得（`GET /api/projects/:id/tasks`）＋ ProjectCard へのリンク用プロジェクト名取得 |
+| `app/projects/[id]/wbs/loading.tsx` | — | スケルトン（テーブル行3件分） |
+| `app/projects/[id]/wbs/error.tsx` | Client Component | API エラー時の `role="alert"` バナー＋再試行 |
+| `components/wbs/TaskTreeTable.tsx` | Client Component | WBS テーブル本体（ツリー変換・展開/折りたたみ・タスク追加/削除）|
+| `components/wbs/TaskRow.tsx` | Client Component | 1行（インライン編集・削除ボタン・展開アイコン）|
+| `lib/taskTree.ts` | — | `buildTree()` / `flattenVisible()` ユーティリティ関数 |
+| `types/task.ts` | — | `Task` 型定義（バックエンド `TaskResponse` に対応） |
+
+`ProjectCard` に「開く」ボタン（`/projects/[id]/wbs`）を追加。
+
+### 状態設計
+
+```typescript
+// TaskTreeTable.tsx 内
+const [tasks, setTasks] = useState<Task[]>(initialTasks)
+const [editingId, setEditingId] = useState<number | null>(null)
+const [collapsedIds, setCollapsedIds] = useState<Set<number>>(new Set())
+```
+
+| 状態 | 表示内容 |
+|------|---------|
+| ローディング | スケルトン（テーブル行3件分） |
+| 空（tasks.length === 0） | 「タスクがありません」＋CTA ボタン |
+| 通常 | ツリーテーブル |
+| エラー | `role="alert"` バナー＋再試行 |
+| タスク名クリック | インライン編集モード（`editingId` が該当行） |
+| 子タスクを持つ行の展開アイコンクリック | `collapsedIds` トグル |
+
+### ツリー変換
+
+バックエンドはフラットリスト（`parent_id` 参照）を返す。フロントで `buildTree()` によりツリー構造に変換し、`flattenVisible()` で折りたたみ状態を考慮した表示行リストを生成する。
+
+```
+buildTree(tasks: Task[]): TreeNode[]
+  → parent_id で親子を結合
+  → sort_order で並び順を保持
+
+flattenVisible(nodes: TreeNode[], collapsedIds: Set<number>): FlatRow[]
+  → depth（インデント量）を各行に付与
+  → collapsedIds に含まれる node の children はスキップ
+```
+
+### API 対応
+
+| 操作 | API |
+|------|-----|
+| タスク一覧取得 | `GET /api/projects/{id}/tasks` |
+| タスク追加 | `POST /api/projects/{id}/tasks`（`parent_id` 指定でネスト、`sort_order` 自動計算） |
+| タスク名更新 | `PATCH /api/tasks/{id}`（`{ name }` のみ送信） |
+| タスク削除 | `DELETE /api/tasks/{id}`（子タスクも連鎖論理削除） |
+
+### レスポンシブ
+
+375px 幅では横スクロール可（テーブル形式のため最低幅を確保しつつ、`overflow-x-auto` でスクロール対応）。
+
+### アクセシビリティ
+
+- 展開/折りたたみアイコンに `aria-expanded` / `aria-label` を付与
+- インライン編集インプットに `aria-label="タスク名を編集"` を付与
+- 削除ボタンに `aria-label="タスクを削除: {タスク名}"` を付与
+
 ## 主要な設計判断
 
 - **shadcn/ui 採用**: カスタマイズ性の高い既製 UI コンポーネントを流用し、デザイン実装コストを最小化。`components/ui/` は自動生成のため直接編集しない。
@@ -213,3 +314,7 @@ cd frontend && npx shadcn add dialog input textarea label skeleton
 - **Issue #12: カードグリッドレイアウト採用**: Linear/Notion に近いビジュアルでプロジェクトを把握しやすい。情報密度よりも一目でわかる視覚的なカード形式を優先。
 - **Issue #12: クライアント側検索**: 検索ごとにAPIを呼ばず `Array.filter()` で処理。プロジェクト数が少ない（10人以下チーム）前提のため、パフォーマンス上問題なし。
 - **Issue #12: 375px 最低限対応**: 要件定義書でモバイル最適化は対象外だが、横スクロールが出ない程度の最低限対応（1列グリッドに折りたたむ）を実施する（Issue AC#6 の要件と整合）。
+- **Issue #14: テーブル形式 WBS 採用**: 展開列・タスク名列・ステータス列・削除列の4列構成。将来の列追加（担当者・期日・進捗）に対応しやすい。
+- **Issue #14: ProjectCard → /projects/[id]/wbs 直接リンク**: ダッシュボードページ（`/projects/[id]`）は将来の Issue で追加。Issue #14 のスコープを WBS エディタ本体に絞る。
+- **Issue #14: buildTree / flattenVisible 分離**: ツリー変換ロジックをコンポーネントから分離して `lib/taskTree.ts` に置く（単体テスト対象）。
+- **Issue #14: Enter で現在フォーカス行直下に追加**: Notion/Linear スタイルの操作感。`parent_id` は追加元タスクと同じ親を引き継ぐ（兄弟として追加）。
