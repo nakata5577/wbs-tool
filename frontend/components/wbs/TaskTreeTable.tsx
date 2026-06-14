@@ -190,12 +190,11 @@ export default function TaskTreeTable({ projectId, initialTasks }: Props) {
     if (!over) return;
 
     const dragId = Number(active.id);
-    const zone = (over.data.current as { zone?: "before" | "after" | "child" } | undefined)?.zone;
-    // 本番: data.current.taskId からタスクID を取得。テスト: over.id が直接タスクID
-    const taskIdFromData = (over.data.current as { taskId?: number } | undefined)?.taskId;
-    const dropId = taskIdFromData !== undefined ? taskIdFromData : Number(over.id);
+    const data = over.data.current as { zone?: "before" | "after" | "child"; taskId?: number } | undefined;
+    const zone = data?.zone;
+    const dropId = data?.taskId;
 
-    if (!zone || dragId === dropId) return;
+    if (!zone || dropId === undefined || dragId === dropId) return;
 
     setErrorMessage(null);
     const previousTasks = tasks;
@@ -367,6 +366,7 @@ export default function TaskTreeTable({ projectId, initialTasks }: Props) {
         sensors={sensors}
         onDragStart={() => setIsGlobalDragging(true)}
         onDragEnd={handleDragEnd}
+        onDragCancel={() => setIsGlobalDragging(false)}
       >
         <div className="flex flex-col">
           {rows.map((row) => (

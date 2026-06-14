@@ -1,9 +1,9 @@
 /**
- * Issue #15: WBS D&D のコンポーネントレベルテスト（AC4）
+ * Issue #15: WBS D&D のコンポーネントレベルテスト（AC1〜AC4）
  *
- * @dnd-kit/core / @dnd-kit/sortable は未インストールのため virtual mock で代替。
- * jest.mock({ virtual: true }) を使い、存在しないモジュールをモック可能にする。
- * 実装後は @dnd-kit をインストールすることでモックが実際の API に置き換わる。
+ * @dnd-kit/core / @dnd-kit/sortable を jest.mock でスタブ化し、
+ * DndContext の onDragEnd コールバックをキャプチャしてテストから直接呼び出す。
+ * over.data.current には本番コードと同じ { zone, taskId } を渡す。
  */
 import React from "react";
 import { render, screen, act, waitFor } from "@testing-library/react";
@@ -11,14 +11,15 @@ import type { Task } from "../../types/task";
 
 // ---- @dnd-kit/core の virtual mock ----
 // onDragEnd コールバックをキャプチャして tests から直接呼び出せるようにする
-let capturedOnDragEnd: ((event: { active: { id: number }; over: { id: number; data: { current: { zone: "before" | "after" | "child" } } } | null }) => void) | undefined;
+type DropZoneData = { zone: "before" | "after" | "child"; taskId: number };
+let capturedOnDragEnd: ((event: { active: { id: number }; over: { id: number; data: { current: DropZoneData } } | null }) => void) | undefined;
 
 jest.mock(
   "@dnd-kit/core",
   () => {
     const React = require("react");
     return {
-      DndContext: ({ children, onDragEnd }: { children: React.ReactNode; onDragEnd: typeof capturedOnDragEnd }) => {
+      DndContext: ({ children, onDragEnd }: { children: React.ReactNode; onDragEnd: typeof capturedOnDragEnd; [key: string]: unknown }) => {
         capturedOnDragEnd = onDragEnd;
         return React.createElement(React.Fragment, null, children);
       },
@@ -114,7 +115,7 @@ describe("TaskTreeTable - D&D（Issue #15）", () => {
       await act(async () => {
         capturedOnDragEnd?.({
           active: { id: 2 },
-          over: { id: 1, data: { current: { zone: "before" } } },
+          over: { id: 1, data: { current: { zone: "before", taskId: 1 } } },
         });
       });
 
@@ -155,7 +156,7 @@ describe("TaskTreeTable - D&D（Issue #15）", () => {
       await act(async () => {
         capturedOnDragEnd?.({
           active: { id: 2 },
-          over: { id: 1, data: { current: { zone: "before" } } },
+          over: { id: 1, data: { current: { zone: "before", taskId: 1 } } },
         });
       });
 
@@ -195,7 +196,7 @@ describe("TaskTreeTable - D&D（Issue #15）", () => {
       await act(async () => {
         capturedOnDragEnd?.({
           active: { id: 2 },
-          over: { id: 1, data: { current: { zone: "child" } } },
+          over: { id: 1, data: { current: { zone: "child", taskId: 1 } } },
         });
       });
 
@@ -231,7 +232,7 @@ describe("TaskTreeTable - D&D（Issue #15）", () => {
       await act(async () => {
         capturedOnDragEnd?.({
           active: { id: 2 },
-          over: { id: 3, data: { current: { zone: "after" } } },
+          over: { id: 3, data: { current: { zone: "after", taskId: 3 } } },
         });
       });
 

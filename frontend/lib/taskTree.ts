@@ -43,6 +43,17 @@ export function buildTree(tasks: Task[]): TreeNode[] {
   return roots;
 }
 
+/** dragId がそのまま dropId の親になると循環参照になる場合に true を返す */
+function wouldCreateCycle(tasks: Task[], dragId: number, newParentId: number | null): boolean {
+  let currentId: number | null = newParentId;
+  while (currentId !== null) {
+    if (currentId === dragId) return true;
+    const current = tasks.find((t) => t.id === currentId);
+    currentId = current?.parent_id ?? null;
+  }
+  return false;
+}
+
 export function reorderTasks(
   tasks: Task[],
   dragId: number,
@@ -50,16 +61,20 @@ export function reorderTasks(
   zone: "before" | "after" | "child",
 ): Task[] {
   if (zone === "child") {
-    const maxChildSort = tasks
-      .filter((t) => t.parent_id === dropId)
-      .reduce((max, t) => Math.max(max, t.sort_order), -1);
+    // 自身へのドロップ、または子孫へのドロップは循環参照になるためスキップ
+    if (dragId === dropId || wouldCreateCycle(tasks, dragId, dropId)) return tasks;
+    const children = tasks.filter((t) => t.parent_id === dropId);
+    const insertIdx = children.length;
     return tasks
-      .map((t) => (t.id === dragId ? { ...t, parent_id: dropId, sort_order: maxChildSort + 1 } : t))
+      .map((t) => (t.id === dragId ? { ...t, parent_id: dropId, sort_order: insertIdx } : t))
       .sort((a, b) => a.sort_order - b.sort_order);
   }
 
   const dropTask = tasks.find((t) => t.id === dropId)!;
   const newParentId = dropTask.parent_id;
+
+  // 自身へのドロップ、または循環参照になるケースをスキップ
+  if (newParentId === dragId || wouldCreateCycle(tasks, dragId, newParentId)) return tasks;
 
   const siblings = tasks
     .filter((t) => t.parent_id === newParentId && t.id !== dragId)
@@ -72,6 +87,7 @@ export function reorderTasks(
   const reordered = [...siblings];
   reordered.splice(insertIdx, 0, { ...dragTask, parent_id: newParentId });
 
+  // 全シブリングを 0,1,2,... で再採番（バックエンドも同様に再採番するため整合する）
   const updatedSiblings = reordered.map((t, i) => ({ ...t, sort_order: i }));
   const siblingIds = new Set(updatedSiblings.map((t) => t.id));
 

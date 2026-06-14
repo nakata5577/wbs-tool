@@ -320,7 +320,7 @@ flattenVisible(nodes: TreeNode[], collapsedIds: Set<number>): FlatRow[]
 - **Issue #14: ProjectCard → /projects/[id]/wbs 直接リンク**: ダッシュボードページ（`/projects/[id]`）は将来の Issue で追加。Issue #14 のスコープを WBS エディタ本体に絞る。
 - **Issue #14: buildTree / flattenVisible 分離**: ツリー変換ロジックをコンポーネントから分離して `lib/taskTree.ts` に置く（単体テスト対象）。
 - **Issue #14: Enter で現在フォーカス行直下に追加**: Notion/Linear スタイルの操作感。`parent_id` は追加元タスクと同じ親を引き継ぐ（兄弟として追加）。
-- **Issue #15: ドロップゾーン方式（案A）採用**: 行の上半分＝「前に兄弟挿入」ゾーン、下半分＝「後に兄弟挿入」ゾーン、下部インデント部分＝「子にする」ゾーンの3分割で判定。水平オフセット方式（案B）より実装が明確で UX も直感的。
+- **Issue #15: ドロップゾーン方式（案A）採用**: 各行の上1/3＝「前に兄弟挿入」ゾーン、中1/3＝「後に兄弟挿入」ゾーン、下1/3＝「子にする」ゾーンの3等分で判定（`h-1/3` × 3段の絶対配置 DropZone）。水平オフセット方式（案B）より実装が明確で UX も直感的。
 - **Issue #15: PATCH /api/tasks/{id}/move 新エンドポイント**: sort_order + parent_id を1回で更新。既存 /sort エンドポイント（sort_order のみ）を汚染しない。
 - **Issue #15: 楽観的更新採用**: ドロップ直後に UI を即時更新しロールバックは API 失敗時のみ（D&D の操作感を損なわないため。既存の「楽観的更新を採用しない」方針の例外）。
 
