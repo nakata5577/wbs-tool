@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.project import Project
 from app.models.task import Task
-from app.schemas.task import TaskCreate, TaskResponse, TaskSortUpdate, TaskUpdate
+from app.schemas.task import TaskCreate, TaskMoveUpdate, TaskResponse, TaskSortUpdate, TaskUpdate
 
 router = APIRouter(tags=["tasks"])
 
@@ -132,6 +132,16 @@ def update_task_sort(
 ) -> Task:
     task = _get_active_task_or_404(task_id, db)
     task.sort_order = body.sort_order
+    db.commit()
+    db.refresh(task)
+    return task
+
+
+@router.patch("/api/tasks/{task_id}/move", response_model=TaskResponse)
+def move_task(task_id: int, body: TaskMoveUpdate, db: Session = Depends(get_db)) -> Task:
+    task = _get_active_task_or_404(task_id, db)
+    task.sort_order = body.sort_order
+    task.parent_id = body.parent_id
     db.commit()
     db.refresh(task)
     return task

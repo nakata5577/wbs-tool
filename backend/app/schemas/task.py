@@ -35,6 +35,11 @@ class TaskSortUpdate(BaseModel):
     sort_order: int
 
 
+class TaskMoveUpdate(BaseModel):
+    sort_order: int
+    parent_id: int | None
+
+
 class TaskResponse(BaseModel):
     id: int
     project_id: int

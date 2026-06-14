@@ -43,6 +43,43 @@ export function buildTree(tasks: Task[]): TreeNode[] {
   return roots;
 }
 
+export function reorderTasks(
+  tasks: Task[],
+  dragId: number,
+  dropId: number,
+  zone: "before" | "after" | "child",
+): Task[] {
+  if (zone === "child") {
+    const maxChildSort = tasks
+      .filter((t) => t.parent_id === dropId)
+      .reduce((max, t) => Math.max(max, t.sort_order), -1);
+    return tasks
+      .map((t) => (t.id === dragId ? { ...t, parent_id: dropId, sort_order: maxChildSort + 1 } : t))
+      .sort((a, b) => a.sort_order - b.sort_order);
+  }
+
+  const dropTask = tasks.find((t) => t.id === dropId)!;
+  const newParentId = dropTask.parent_id;
+
+  const siblings = tasks
+    .filter((t) => t.parent_id === newParentId && t.id !== dragId)
+    .sort((a, b) => a.sort_order - b.sort_order);
+
+  const dropIdx = siblings.findIndex((t) => t.id === dropId);
+  const insertIdx = zone === "before" ? dropIdx : dropIdx + 1;
+
+  const dragTask = tasks.find((t) => t.id === dragId)!;
+  const reordered = [...siblings];
+  reordered.splice(insertIdx, 0, { ...dragTask, parent_id: newParentId });
+
+  const updatedSiblings = reordered.map((t, i) => ({ ...t, sort_order: i }));
+  const siblingIds = new Set(updatedSiblings.map((t) => t.id));
+
+  return tasks
+    .map((t) => (siblingIds.has(t.id) ? updatedSiblings.find((s) => s.id === t.id)! : t))
+    .sort((a, b) => a.sort_order - b.sort_order);
+}
+
 export function flattenVisible(tree: TreeNode[], collapsedIds: Set<number>): FlatRow[] {
   const rows: FlatRow[] = [];
 

@@ -1,12 +1,169 @@
 "use client";
 
 import { useState } from "react";
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import type { DragEndEvent } from "@dnd-kit/core";
 import type { Task } from "../../types/task";
-import { buildTree, flattenVisible } from "../../lib/taskTree";
+import type { FlatRow } from "../../lib/taskTree";
+import { buildTree, flattenVisible, reorderTasks } from "../../lib/taskTree";
 
 interface Props {
   projectId: number;
   initialTasks: Task[];
+}
+
+// 指定タスクとその全子孫の id を集める（削除時に子孫もまとめて取り除くため）
+function collectDescendantIds(id: number, tasks: Task[]): Set<number> {
+  const ids = new Set<number>([id]);
+  for (const child of tasks.filter((t) => t.parent_id === id)) {
+    for (const descendantId of collectDescendantIds(child.id, tasks)) {
+      ids.add(descendantId);
+    }
+  }
+  return ids;
+}
+
+interface DropZoneProps {
+  id: string;
+  zone: "before" | "after" | "child";
+  taskId: number;
+  className: string;
+  active: boolean;
+}
+
+function DropZone({ id, zone, taskId, className, active }: DropZoneProps) {
+  const { setNodeRef, isOver } = useDroppable({ id, data: { zone, taskId } });
+  return (
+    <div
+      ref={setNodeRef}
+      className={`${className} ${active ? "" : "pointer-events-none"} ${isOver ? "bg-primary/15 ring-1 ring-inset ring-primary/50" : ""}`}
+    />
+  );
+}
+
+interface DraggableTaskRowProps {
+  row: FlatRow;
+  isCollapsed: boolean;
+  isEditing: boolean;
+  editingName: string;
+  isGlobalDragging: boolean;
+  onToggleCollapse: (id: number) => void;
+  onStartEdit: (task: Task) => void;
+  onCommitEdit: () => void;
+  onCancelEdit: () => void;
+  onEditingNameChange: (name: string) => void;
+  onDelete: (id: number) => void;
+}
+
+function DraggableTaskRow({
+  row,
+  isCollapsed,
+  isEditing,
+  editingName,
+  isGlobalDragging,
+  onToggleCollapse,
+  onStartEdit,
+  onCommitEdit,
+  onCancelEdit,
+  onEditingNameChange,
+  onDelete,
+}: DraggableTaskRowProps) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: row.task.id,
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      data-testid="task-row"
+      className={`relative flex items-center gap-2 border-b py-2 ${isDragging ? "opacity-50" : ""}`}
+      style={{ paddingLeft: `${Math.min(row.depth, 4) * 24 + 8}px` }}
+    >
+      {/* ドロップゾーン: 上 33% = before、中 33% = after、下 33% = child */}
+      <DropZone
+        id={`before-${row.task.id}`}
+        zone="before"
+        taskId={row.task.id}
+        className="absolute inset-x-0 top-0 z-10 h-1/3 rounded-t"
+        active={isGlobalDragging}
+      />
+      <DropZone
+        id={`after-${row.task.id}`}
+        zone="after"
+        taskId={row.task.id}
+        className="absolute inset-x-0 top-1/3 z-10 h-1/3"
+        active={isGlobalDragging}
+      />
+      <DropZone
+        id={`child-${row.task.id}`}
+        zone="child"
+        taskId={row.task.id}
+        className="absolute inset-x-0 bottom-0 z-10 h-1/3 rounded-b"
+        active={isGlobalDragging}
+      />
+
+      {/* ドラッグハンドル */}
+      <button
+        {...attributes}
+        {...listeners}
+        className="flex h-6 w-6 cursor-grab items-center justify-center text-xs text-muted-foreground hover:text-foreground active:cursor-grabbing"
+        aria-label="ドラッグして並べ替え"
+      >
+        ⠿
+      </button>
+
+      {row.hasChildren ? (
+        <button
+          aria-label={isCollapsed ? "展開" : "折りたたむ"}
+          aria-expanded={!isCollapsed}
+          onClick={() => onToggleCollapse(row.task.id)}
+          className="flex h-6 w-6 items-center justify-center text-xs text-muted-foreground hover:text-foreground"
+        >
+          {isCollapsed ? "▶" : "▼"}
+        </button>
+      ) : (
+        <span className="h-6 w-6" />
+      )}
+
+      {isEditing ? (
+        <input
+          type="text"
+          value={editingName}
+          onChange={(e) => onEditingNameChange(e.target.value)}
+          onBlur={onCommitEdit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") onCommitEdit();
+            if (e.key === "Escape") onCancelEdit();
+          }}
+          autoFocus
+          className="flex-1 rounded border bg-background px-2 py-0.5 text-sm outline-none focus:ring-1 focus:ring-ring"
+        />
+      ) : (
+        <span
+          className="flex-1 cursor-pointer text-sm hover:text-primary"
+          onClick={() => onStartEdit(row.task)}
+        >
+          {row.task.name}
+        </span>
+      )}
+
+      <button
+        aria-label={`${row.task.name} を削除`}
+        onClick={() => onDelete(row.task.id)}
+        className="text-xs text-muted-foreground hover:text-destructive"
+      >
+        削除
+      </button>
+    </div>
+  );
 }
 
 export default function TaskTreeTable({ projectId, initialTasks }: Props) {
@@ -17,18 +174,51 @@ export default function TaskTreeTable({ projectId, initialTasks }: Props) {
   const [isAdding, setIsAdding] = useState(false);
   const [newTaskName, setNewTaskName] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isGlobalDragging, setIsGlobalDragging] = useState(false);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor),
+  );
 
   const tree = buildTree(tasks);
   const rows = flattenVisible(tree, collapsedIds);
 
-  const collectDescendantIds = (id: number, all: Task[]): Set<number> => {
-    const ids = new Set<number>([id]);
-    all
-      .filter((t) => t.parent_id === id)
-      .forEach((c) => {
-        collectDescendantIds(c.id, all).forEach((d) => ids.add(d));
-      });
-    return ids;
+  const handleDragEnd = async (event: DragEndEvent) => {
+    setIsGlobalDragging(false);
+    const { active, over } = event;
+    if (!over) return;
+
+    const dragId = Number(active.id);
+    const zone = (over.data.current as { zone?: "before" | "after" | "child" } | undefined)?.zone;
+    // 本番: data.current.taskId からタスクID を取得。テスト: over.id が直接タスクID
+    const taskIdFromData = (over.data.current as { taskId?: number } | undefined)?.taskId;
+    const dropId = taskIdFromData !== undefined ? taskIdFromData : Number(over.id);
+
+    if (!zone || dragId === dropId) return;
+
+    setErrorMessage(null);
+    const previousTasks = tasks;
+    const reordered = reorderTasks(tasks, dragId, dropId, zone);
+    const movedTask = reordered.find((t) => t.id === dragId);
+    if (!movedTask) return;
+
+    setTasks(reordered);
+
+    const res = await fetch(`/api/tasks/${dragId}/move`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sort_order: movedTask.sort_order, parent_id: movedTask.parent_id }),
+    });
+
+    if (!res.ok) {
+      setTasks(previousTasks);
+      setErrorMessage("移動に失敗しました。もう一度お試しください。");
+      return;
+    }
+
+    const updated: Task = await res.json();
+    setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
   };
 
   const handleDelete = async (id: number) => {
@@ -59,7 +249,7 @@ export default function TaskTreeTable({ projectId, initialTasks }: Props) {
 
   const collapseAll = () => {
     const parentIds = new Set<number>(
-      tasks.filter((t) => t.parent_id !== null).map((t) => t.parent_id!)
+      tasks.filter((t) => t.parent_id !== null).map((t) => t.parent_id!),
     );
     setCollapsedIds(parentIds);
   };
@@ -161,10 +351,7 @@ export default function TaskTreeTable({ projectId, initialTasks }: Props) {
             className="flex-1 bg-transparent text-sm outline-none"
             placeholder="タスク名を入力"
           />
-          <button
-            onClick={handleAddTask}
-            className="text-xs text-primary hover:text-primary/80"
-          >
+          <button onClick={handleAddTask} className="text-xs text-primary hover:text-primary/80">
             追加
           </button>
           <button
@@ -176,62 +363,30 @@ export default function TaskTreeTable({ projectId, initialTasks }: Props) {
         </div>
       )}
 
-      <div className="flex flex-col">
-        {rows.map((row) => {
-          const isCollapsed = collapsedIds.has(row.task.id);
-          const isEditing = editingId === row.task.id;
-          return (
-            <div
+      <DndContext
+        sensors={sensors}
+        onDragStart={() => setIsGlobalDragging(true)}
+        onDragEnd={handleDragEnd}
+      >
+        <div className="flex flex-col">
+          {rows.map((row) => (
+            <DraggableTaskRow
               key={row.task.id}
-              className="flex items-center gap-2 border-b py-2"
-              style={{ paddingLeft: `${Math.min(row.depth, 4) * 24 + 8}px` }}
-            >
-              {row.hasChildren ? (
-                <button
-                  aria-label={isCollapsed ? "展開" : "折りたたむ"}
-                  aria-expanded={!isCollapsed}
-                  onClick={() => toggleCollapse(row.task.id)}
-                  className="flex h-6 w-6 items-center justify-center text-xs text-muted-foreground hover:text-foreground"
-                >
-                  {isCollapsed ? "▶" : "▼"}
-                </button>
-              ) : (
-                <span className="h-6 w-6" />
-              )}
-
-              {isEditing ? (
-                <input
-                  type="text"
-                  value={editingName}
-                  onChange={(e) => setEditingName(e.target.value)}
-                  onBlur={commitEdit}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") commitEdit();
-                    if (e.key === "Escape") setEditingId(null);
-                  }}
-                  autoFocus
-                  className="flex-1 rounded border bg-background px-2 py-0.5 text-sm outline-none focus:ring-1 focus:ring-ring"
-                />
-              ) : (
-                <span
-                  className="flex-1 cursor-pointer text-sm hover:text-primary"
-                  onClick={() => startEdit(row.task)}
-                >
-                  {row.task.name}
-                </span>
-              )}
-
-              <button
-                aria-label={`${row.task.name} を削除`}
-                onClick={() => handleDelete(row.task.id)}
-                className="text-xs text-muted-foreground hover:text-destructive"
-              >
-                削除
-              </button>
-            </div>
-          );
-        })}
-      </div>
+              row={row}
+              isCollapsed={collapsedIds.has(row.task.id)}
+              isEditing={editingId === row.task.id}
+              editingName={editingName}
+              isGlobalDragging={isGlobalDragging}
+              onToggleCollapse={toggleCollapse}
+              onStartEdit={startEdit}
+              onCommitEdit={commitEdit}
+              onCancelEdit={() => setEditingId(null)}
+              onEditingNameChange={setEditingName}
+              onDelete={handleDelete}
+            />
+          ))}
+        </div>
+      </DndContext>
     </div>
   );
 }
