@@ -2,8 +2,8 @@
 title: UI/画面設計
 area: ui
 status: active
-relatedIssues: [12, 14, 15]
-updated: 2026-06-14
+relatedIssues: [12, 14, 15, 16]
+updated: 2026-06-15
 kind: ui
 ---
 
@@ -42,7 +42,8 @@ flowchart LR
 | `ProjectCard` | プロジェクト一覧の 1 件カード | idle / hover |
 | `ProjectList` | プロジェクト一覧・検索フィルタ | loading / empty / populated |
 | `TaskTreeTable` | WBS ツリーテーブル（階層表示・D&D） | loading / empty / populated |
-| `TaskRow` | ツリーテーブルの 1 行（インライン編集） | view / editing |
+| `DraggableTaskRow`（`TaskTreeTable.tsx` 内） | ツリーテーブルの 1 行（ドラッグ操作・タスク名クリックでパネル開） | idle / dragging |
+| `TaskDetailPanel` | タスク詳細パネル（右スライドイン・フォーム保存） | open / closed / error |
 | `GanttChart` | ガントチャート本体 | loading / empty / populated |
 | `GanttBar` | タスクのガントバー（D&D で期間変更） | idle / dragging |
 | `MilestoneMarker` | ガントのダイヤモンドマーカー | achieved / pending |
@@ -64,12 +65,12 @@ sequenceDiagram
     RSC->>API: GET /api/projects/:id/tasks（サーバー側fetch）
     API-->>RSC: タスク一覧
     RSC-->>U: HTML（タスクツリー初期描画）
-    U->>CC: タスク名をクリック（インライン編集）
-    CC-->>U: 編集フォームを表示
-    U->>CC: 変更を保存
-    CC->>API: PUT /api/tasks/:id（クライアント側fetch）
+    U->>CC: タスク名をクリック（タスク詳細パネル）
+    CC-->>U: 右サイドパネルが表示（selectedTask をセット）
+    U->>CC: フォームを編集して「保存」クリック
+    CC->>API: PATCH /api/tasks/:id（クライアント側fetch）
     API-->>CC: 更新後タスク
-    CC-->>U: 画面更新
+    CC-->>U: 画面更新（パネル内フォームに反映）
 ```
 
 ## 状態設計（主要画面）
@@ -111,7 +112,7 @@ shadcn/ui のデフォルト CSS 変数テーマを使用（`frontend/src/app/gl
 
 ## アクセシビリティ
 
-- **キーボード操作**: WBS ツリーは矢印キーで展開/折りたたみ対応。インライン編集は Enter で確定・Esc でキャンセル
+- **キーボード操作**: WBS ツリーは矢印キーで展開/折りたたみ対応。タスク詳細パネルは ESC で閉じる・Tab でフォーカストラップ
 - **コントラスト**: WCAG AA（4.5:1 以上）を維持（shadcn/ui デフォルトが対応済み）
 - **フォーム**: `aria-label` または関連 `<label>` を必ず付与
 - **エラー通知**: `role="alert"` でスクリーンリーダーに通知
@@ -129,6 +130,10 @@ Storybook（`npm run storybook`、port 6006）で状態別カタログを管理�
 | プロジェクト一覧（モバイル 375px） | 2026-06-14 | [12-project-list-mobile-after.png](../screenshots/12-project-list-mobile-after.png) |
 | WBS エディタ（デスクトップ 1440px） | 2026-06-14 | [15-wbs-desktop-after.png](../screenshots/15-wbs-desktop-after.png) |
 | WBS エディタ（モバイル 375px） | 2026-06-14 | [15-wbs-mobile-after.png](../screenshots/15-wbs-mobile-after.png) |
+| WBS + タスク詳細パネル（デスクトップ 1280px・パネル閉） | 2026-06-15 | [16-wbs-desktop-before.png](../screenshots/16-wbs-desktop-before.png) |
+| WBS + タスク詳細パネル（デスクトップ 1280px・パネル開） | 2026-06-15 | [16-wbs-desktop-after.png](../screenshots/16-wbs-desktop-after.png) |
+| WBS + タスク詳細パネル（モバイル 375px・パネル閉） | 2026-06-15 | [16-wbs-mobile-before.png](../screenshots/16-wbs-mobile-before.png) |
+| WBS + タスク詳細パネル（モバイル 375px・パネル開） | 2026-06-15 | [16-wbs-mobile-after.png](../screenshots/16-wbs-mobile-after.png) |
 
 UI 変更時は `frontend-reviewer` でスクリーンショットを取得し `docs/screenshots/` に保存して本表を更新する。
 
@@ -229,12 +234,6 @@ cd frontend && npx shadcn add dialog input textarea label skeleton
 └─────────────────────────────────────────────────────────┘
 ```
 
-**インライン編集（タスク名クリック時）:**
-```
-│  ▼   │ [____________編集中__________] │  未着手   │  [🗑]   │
-│      │  ↳ Enter で確定 / Esc でキャンセル                   │
-```
-
 **Enter で新規行追加（現在フォーカス行の直下）:**
 ```
 │  ▼   │ タスク A                        │  未着手   │  [🗑]   │
@@ -250,7 +249,7 @@ cd frontend && npx shadcn add dialog input textarea label skeleton
 | `app/projects/[id]/wbs/loading.tsx` | — | スケルトン（テーブル行3件分） |
 | `app/projects/[id]/wbs/error.tsx` | Client Component | API エラー時の `role="alert"` バナー＋再試行 |
 | `components/wbs/TaskTreeTable.tsx` | Client Component | WBS テーブル本体（ツリー変換・展開/折りたたみ・タスク追加/削除）|
-| `components/wbs/TaskRow.tsx` | Client Component | 1行（インライン編集・削除ボタン・展開アイコン）|
+| `DraggableTaskRow`（`TaskTreeTable.tsx` 内） | — | 1行（タスク名クリックでパネル開く・削除ボタン・展開アイコン）|
 | `lib/taskTree.ts` | — | `buildTree()` / `flattenVisible()` ユーティリティ関数 |
 | `types/task.ts` | — | `Task` 型定義（バックエンド `TaskResponse` に対応） |
 
@@ -261,7 +260,7 @@ cd frontend && npx shadcn add dialog input textarea label skeleton
 ```typescript
 // TaskTreeTable.tsx 内
 const [tasks, setTasks] = useState<Task[]>(initialTasks)
-const [editingId, setEditingId] = useState<number | null>(null)
+const [selectedTask, setSelectedTask] = useState<Task | null>(null)
 const [collapsedIds, setCollapsedIds] = useState<Set<number>>(new Set())
 ```
 
@@ -271,7 +270,7 @@ const [collapsedIds, setCollapsedIds] = useState<Set<number>>(new Set())
 | 空（tasks.length === 0） | 「タスクがありません」＋CTA ボタン |
 | 通常 | ツリーテーブル |
 | エラー | `role="alert"` バナー＋再試行 |
-| タスク名クリック | インライン編集モード（`editingId` が該当行） |
+| タスク名クリック | タスク詳細パネルを開く（`selectedTask` に選択タスクをセット） |
 | 子タスクを持つ行の展開アイコンクリック | `collapsedIds` トグル |
 
 ### ツリー変換
@@ -304,13 +303,13 @@ flattenVisible(nodes: TreeNode[], collapsedIds: Set<number>): FlatRow[]
 ### アクセシビリティ
 
 - 展開/折りたたみアイコンに `aria-expanded` / `aria-label` を付与
-- インライン編集インプットに `aria-label="タスク名を編集"` を付与
+- タスク詳細パネルに `role="dialog"` / `aria-modal="true"` / `aria-labelledby` を付与
 - 削除ボタンに `aria-label="タスクを削除: {タスク名}"` を付与
 
 ## 主要な設計判断
 
 - **shadcn/ui 採用**: カスタマイズ性の高い既製 UI コンポーネントを流用し、デザイン実装コストを最小化。`components/ui/` は自動生成のため直接編集しない。
-- **RSC（Server Components）でのデータフェッチ**: 初期描画はサーバーコンポーネントで行い、ハイドレーション量を最小化。インタラクティブな部分（D&D・インライン編集）のみ `"use client"` で切り出す。
+- **RSC（Server Components）でのデータフェッチ**: 初期描画はサーバーコンポーネントで行い、ハイドレーション量を最小化。インタラクティブな部分（D&D・タスク詳細パネル）のみ `"use client"` で切り出す。
 - **デスクトップ優先**: 全機能を 1280px 以上で最適化。モバイル/タブレットは対象外（要件で明示的にスコープ外）。
 - **楽観的更新を採用しない（D&D を除く）**: 実装シンプルさ優先。保存完了後にサーバーレスポンスで画面を更新する。D&D 並び替えのみ例外（操作感のため楽観的更新＋失敗時ロールバック方式を採用、Issue #15）。
 - **Issue #12: カードグリッドレイアウト採用**: Linear/Notion に近いビジュアルでプロジェクトを把握しやすい。情報密度よりも一目でわかる視覚的なカード形式を優先。
@@ -397,4 +396,132 @@ sequenceDiagram
 - ドラッグハンドルに `aria-label="ドラッグして並べ替え"` を付与
 - ドラッグ中は `aria-grabbed` 属性を管理（@dnd-kit がデフォルトで対応）
 - キーボードドラッグ対応（`KeyboardSensor`）: Space で掴み・矢印キーで移動・Space で離す
+
+## タスク詳細パネル（Issue #16）
+
+### 画面構成・ワイヤーフレーム
+
+タスク名クリックで右からスライドインするパネルを開く（インライン編集は廃止。タスク名はパネルで編集しない — Issue #16 スコープ外）。
+
+```
+WBS エディタ（パネル閉時）:
+┌─────────────────────────────────────────────────────────┐
+│ WBS エディタ                              [タスクを追加]   │
+├──────────────────────────────────────────────────────── │
+│ ⠿ ▼ タスク A     ← クリックでパネルが開く      [削除]   │
+│ ⠿   └ 子タスク A1 ← クリックでパネルが開く      [削除]   │
+└─────────────────────────────────────────────────────────┘
+
+パネル展開時（右から 320px のシート）:
+┌───────────────────────────────────────────────────────────────┐
+│ WBS エディタ                              [タスクを追加]        │
+├──────────────────────────────────┬────────────────────────────┤
+│ ⠿ ▼ タスク A（選択中・ハイライト） │ タスク詳細             [×] │
+│ ⠿   └ 子タスク A1               ├────────────────────────────┤
+│                                  │ タスク名                    │
+│                                  │ [タスク A_______________]  │
+│                                  │                            │
+│                                  │ 担当者                      │
+│                                  │ [田中太郎_______________]  │
+│                                  │                            │
+│                                  │ 開始日          終了日       │
+│                                  │ [2026-06-15]  [2026-06-30] │
+│                                  │                            │
+│                                  │ 進捗率  40%                 │
+│                                  │ ○━━━━━●━━━━━━━━           │
+│                                  │                            │
+│                                  │ ステータス                   │
+│                                  │ [進行中 ▼]                 │
+│                                  │                            │
+│                                  │ [キャンセル]   [保存]         │
+└──────────────────────────────────┴────────────────────────────┘
+```
+
+**モバイル幅(375px): パネルが全幅のボトムシート（または全幅の右パネル）として表示**
+
+### コンポーネント分割（追加・変更分）
+
+| コンポーネント | 種別 | 変更種別 | 責務 |
+|------------|------|---------|------|
+| `components/wbs/TaskDetailPanel.tsx` | Client Component | 新規 | 右側スライドインパネル。ネイティブ HTML 要素（`<input>` / `<select>` / `<input type="range">`）でフォームを構成し保存ボタンを含む |
+| `components/wbs/TaskTreeTable.tsx` | Client Component | 変更 | `selectedTask` 状態追加・タスク名クリックで `setSelectedTask` 呼び出し→パネル開閉。インライン編集（`editingId`）を廃止 |
+| `stories/TaskDetailPanel.stories.ts` | Storybook | 新規 | コンポーネントカタログ（Default / EmptyFields / FullProgress / Closed の 4 ストーリー） |
+
+**追加する shadcn/ui コンポーネント**: なし（ネイティブ HTML 要素を使用。React Testing Library でのテスタビリティ確保のため shadcn コンポーネントへの置換を避けた）
+
+### 状態設計（追加分）
+
+```typescript
+// TaskTreeTable.tsx に追加
+const [selectedTask, setSelectedTask] = useState<Task | null>(null)
+
+// TaskDetailPanel.tsx 内部（フォーム状態）
+const [assignee, setAssignee] = useState(task.assignee ?? "")
+const [startDate, setStartDate] = useState(task.start_date ?? "")
+const [endDate, setEndDate] = useState(task.end_date ?? "")
+const [progress, setProgress] = useState(task.progress)
+const [status, setStatus] = useState(task.status)
+const [error, setError] = useState<string | null>(null)
+```
+
+| 状態 | 表示内容 |
+|------|---------|
+| パネル閉（`open === false` または `selectedTask === null`） | パネル非表示（`null` を return）。WBS 全幅 |
+| パネル開 | 右固定パネル（`w-80 sm:w-96`）。WBS 画面の上にオーバーレイ表示 |
+| 保存エラー | パネル内に `role="alert"` のエラーメッセージ |
+| キャンセル / × クリック | `onClose()` 呼び出し。`selectedTask` を null にしてパネルを閉じる |
+
+### API フロー
+
+```mermaid
+sequenceDiagram
+    participant U as ユーザー
+    participant WBS as TaskTreeTable
+    participant Panel as TaskDetailPanel
+    participant API as PATCH /api/tasks/{id}
+
+    U->>WBS: タスク名をクリック
+    WBS->>Panel: open(task) → selectedTask をセット
+    Panel-->>U: シートが右からスライドイン
+
+    U->>Panel: 各フィールドを編集して「保存」クリック
+    Panel->>API: PATCH /api/tasks/{id} { assignee, start_date, end_date, progress, status }
+    alt API 成功
+        API-->>Panel: 200 更新後タスク
+        Panel->>WBS: onSave(updatedTask) → tasks 配列を更新
+        Panel-->>U: パネルを閉じる
+    else API 失敗
+        API-->>Panel: エラー
+        Panel-->>U: role="alert" でエラーメッセージ表示
+    end
+
+    U->>Panel: × ボタンまたはパネル外クリック
+    Panel-->>U: パネルが閉じる（変更破棄）
+```
+
+### TaskTreeTable の変更内容
+
+- `onSelectTask`（タスク名クリック → `setSelectedTask` 呼び出し）を追加
+- `editingId`/`editingName` ステートを削除（インライン編集廃止）
+- タスク名は `<span onClick={() => onSelectTask(row.task)}>` で `TaskDetailPanel` を開く
+- ドラッグハンドル・展開ボタン・削除ボタンの動作は変更なし
+
+### アクセシビリティ（実装済み）
+
+- パネル全体: `role="dialog"` + `aria-modal="true"` + `aria-labelledby="task-detail-title"`
+- 閉じるボタン: `aria-label="閉じる"`
+- 各フォームフィールドに `<label htmlFor>` と対応する `id` を付与（RTL `getByLabelText` で検証可能）
+- 保存エラー時: `role="alert"` でスクリーンリーダーに通知
+- パネルが開いたとき最初のフォーカス（担当者 input）に自動フォーカス
+- ESC キーでパネルを閉じる（document keydown リスナー）
+- Tab / Shift+Tab フォーカストラップをパネル内に実装
+- モバイル幅（`sm:` 未満）では黒半透明バックドロップを表示し背後の操作を防ぐ
+
+### 主要な設計判断（Issue #16）
+
+- **タスク名クリック → パネル（インライン編集廃止）**: WBS 表のクリック動作を一元化（案A 採択）。パネル内で名前も含む全属性を編集できるため、操作の集約点が明確。
+- **ネイティブ HTML 要素採用（shadcn Sheet 不採用）**: `<input>` / `<select>` / `<input type="range">` のネイティブ要素を使用。React Testing Library が `getByLabelText` / `getByRole("slider")` 等で直接クエリできるため、シャドー DOM を持つ shadcn コンポーネントに比べてテストが簡潔かつ高信頼。
+- **保存ボタン式（リアルタイム保存なし）**: Issue 仕様どおり。誤操作でのデータ上書きを防ぐ。
+- **キャンセルで変更破棄**: フォーム状態はパネル開時（`task` prop 変更時）に useEffect で初期化し、キャンセル時は `onClose()` でパネルを閉じる（state はパネルが再度開くまで保持されるが `task` prop が変われば再初期化される）。
+- **タスク名はパネルで編集しない（Issue #16 のスコープ外）**: 担当者・開始日・終了日・進捗率・ステータスのみ。タスク名の編集は別 Issue で対応。
 - 注: `aria-dropeffect` は ARIA 1.1 以降 deprecated のため使用しない（@dnd-kit の内部 ARIA 管理に委ねる）

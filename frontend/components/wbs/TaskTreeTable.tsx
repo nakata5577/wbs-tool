@@ -14,6 +14,7 @@ import type { DragEndEvent } from "@dnd-kit/core";
 import type { Task } from "../../types/task";
 import type { FlatRow } from "../../lib/taskTree";
 import { buildTree, flattenVisible, reorderTasks } from "../../lib/taskTree";
+import TaskDetailPanel from "./TaskDetailPanel";
 
 interface Props {
   projectId: number;
@@ -52,28 +53,18 @@ function DropZone({ id, zone, taskId, className, active }: DropZoneProps) {
 interface DraggableTaskRowProps {
   row: FlatRow;
   isCollapsed: boolean;
-  isEditing: boolean;
-  editingName: string;
   isGlobalDragging: boolean;
   onToggleCollapse: (id: number) => void;
-  onStartEdit: (task: Task) => void;
-  onCommitEdit: () => void;
-  onCancelEdit: () => void;
-  onEditingNameChange: (name: string) => void;
+  onSelectTask: (task: Task) => void;
   onDelete: (id: number) => void;
 }
 
 function DraggableTaskRow({
   row,
   isCollapsed,
-  isEditing,
-  editingName,
   isGlobalDragging,
   onToggleCollapse,
-  onStartEdit,
-  onCommitEdit,
-  onCancelEdit,
-  onEditingNameChange,
+  onSelectTask,
   onDelete,
 }: DraggableTaskRowProps) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -133,27 +124,12 @@ function DraggableTaskRow({
         <span className="h-6 w-6" />
       )}
 
-      {isEditing ? (
-        <input
-          type="text"
-          value={editingName}
-          onChange={(e) => onEditingNameChange(e.target.value)}
-          onBlur={onCommitEdit}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") onCommitEdit();
-            if (e.key === "Escape") onCancelEdit();
-          }}
-          autoFocus
-          className="flex-1 rounded border bg-background px-2 py-0.5 text-sm outline-none focus:ring-1 focus:ring-ring"
-        />
-      ) : (
-        <span
-          className="flex-1 cursor-pointer text-sm hover:text-primary"
-          onClick={() => onStartEdit(row.task)}
-        >
-          {row.task.name}
-        </span>
-      )}
+      <span
+        className="flex-1 cursor-pointer text-sm hover:text-primary"
+        onClick={() => onSelectTask(row.task)}
+      >
+        {row.task.name}
+      </span>
 
       <button
         aria-label={`${row.task.name} を削除`}
@@ -169,8 +145,7 @@ function DraggableTaskRow({
 export default function TaskTreeTable({ projectId, initialTasks }: Props) {
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [collapsedIds, setCollapsedIds] = useState<Set<number>>(new Set());
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [editingName, setEditingName] = useState("");
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [newTaskName, setNewTaskName] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -229,7 +204,7 @@ export default function TaskTreeTable({ projectId, initialTasks }: Props) {
     }
     const toRemove = collectDescendantIds(id, tasks);
     setTasks((prev) => prev.filter((t) => !toRemove.has(t.id)));
-    if (editingId !== null && toRemove.has(editingId)) setEditingId(null);
+    if (selectedTask !== null && toRemove.has(selectedTask.id)) setSelectedTask(null);
   };
 
   const toggleCollapse = (id: number) => {
@@ -251,33 +226,6 @@ export default function TaskTreeTable({ projectId, initialTasks }: Props) {
       tasks.filter((t) => t.parent_id !== null).map((t) => t.parent_id!),
     );
     setCollapsedIds(parentIds);
-  };
-
-  const startEdit = (task: Task) => {
-    setEditingId(task.id);
-    setEditingName(task.name);
-  };
-
-  const commitEdit = async () => {
-    if (editingId === null) return;
-    const trimmed = editingName.trim();
-    const original = tasks.find((t) => t.id === editingId);
-    if (!trimmed || (original && trimmed === original.name)) {
-      setEditingId(null);
-      return;
-    }
-    const res = await fetch(`/api/tasks/${editingId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: trimmed }),
-    });
-    if (!res.ok) {
-      setErrorMessage("更新に失敗しました。もう一度お試しください。");
-      setEditingId(null);
-      return;
-    }
-    setTasks((prev) => prev.map((t) => (t.id === editingId ? { ...t, name: trimmed } : t)));
-    setEditingId(null);
   };
 
   const handleAddTask = async () => {
@@ -374,19 +322,27 @@ export default function TaskTreeTable({ projectId, initialTasks }: Props) {
               key={row.task.id}
               row={row}
               isCollapsed={collapsedIds.has(row.task.id)}
-              isEditing={editingId === row.task.id}
-              editingName={editingName}
               isGlobalDragging={isGlobalDragging}
               onToggleCollapse={toggleCollapse}
-              onStartEdit={startEdit}
-              onCommitEdit={commitEdit}
-              onCancelEdit={() => setEditingId(null)}
-              onEditingNameChange={setEditingName}
+              onSelectTask={setSelectedTask}
               onDelete={handleDelete}
             />
           ))}
         </div>
       </DndContext>
+
+      {selectedTask && (
+        <TaskDetailPanel
+          key={selectedTask.id}
+          task={selectedTask}
+          open={true}
+          onClose={() => setSelectedTask(null)}
+          onSave={(updated) => {
+            setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+            setSelectedTask(null);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -78,44 +78,6 @@ describe("TaskTreeTable", () => {
     });
   });
 
-  describe("インライン編集（AC 2）", () => {
-    it("TaskTreeTable_タスク名をクリックしたとき_インライン編集モードになる", () => {
-      // given
-      render(<TaskTreeTable projectId={1} initialTasks={sampleTasks} />);
-      const taskName = screen.getByText("親タスク");
-
-      // when
-      fireEvent.click(taskName);
-
-      // then
-      expect(screen.getByDisplayValue("親タスク")).toBeInTheDocument();
-    });
-
-    it("TaskTreeTable_タスク名を編集してEnterを押したとき_APIに保存されてタスク名が更新される", async () => {
-      // given
-      global.fetch = jest.fn().mockResolvedValue({
-        ok: true,
-        json: async () => makeTask({ id: 1, name: "編集後タスク" }),
-      });
-      render(<TaskTreeTable projectId={1} initialTasks={[makeTask({ id: 1, name: "元の名前" })]} />);
-      fireEvent.click(screen.getByText("元の名前"));
-      const input = screen.getByDisplayValue("元の名前");
-      fireEvent.change(input, { target: { value: "編集後タスク" } });
-
-      // when
-      fireEvent.keyDown(input, { key: "Enter" });
-
-      // then
-      await waitFor(() => {
-        expect(fetch).toHaveBeenCalledWith(
-          "/api/tasks/1",
-          expect.objectContaining({ method: "PATCH" }),
-        );
-        expect(screen.getByText("編集後タスク")).toBeInTheDocument();
-      });
-    });
-  });
-
   describe("タスク削除（AC 3）", () => {
     it("TaskTreeTable_削除ボタンをクリックしたとき_正しいURLにDELETEが送られてタスクが一覧から消える", async () => {
       // given
@@ -181,4 +143,34 @@ describe("TaskTreeTable", () => {
       expect(screen.queryByText("子タスク")).not.toBeInTheDocument();
     });
   });
+
+  // AC1対応: タスク名クリック → パネルが開く（新動作）・インライン編集が起動しない（旧動作の廃止確認）
+  describe("タスク詳細パネル連携（Issue #16 AC1）", () => {
+    it("TaskTreeTable_タスク名をクリックしたとき_タスク詳細パネルが開く", () => {
+      // given
+      render(<TaskTreeTable projectId={1} initialTasks={sampleTasks} />);
+      const taskName = screen.getByText("親タスク");
+
+      // when
+      fireEvent.click(taskName);
+
+      // then
+      // タスク詳細パネルのタイトルが表示されることでパネルが開いたことを確認する
+      expect(screen.getByText("タスク詳細")).toBeInTheDocument();
+    });
+
+    it("TaskTreeTable_タスク名をクリックしたとき_インライン編集の入力フィールドが表示されない", () => {
+      // given
+      render(<TaskTreeTable projectId={1} initialTasks={sampleTasks} />);
+      const taskName = screen.getByText("親タスク");
+
+      // when
+      fireEvent.click(taskName);
+
+      // then
+      // 旧動作（インライン編集）が廃止されたことを確認: DisplayValue で input が出ないこと
+      expect(screen.queryByDisplayValue("親タスク")).not.toBeInTheDocument();
+    });
+  });
 });
+
