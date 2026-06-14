@@ -2,8 +2,10 @@ import PageShell from "@/components/layout/PageShell";
 import ProjectList from "@/components/project/ProjectList";
 import type { Project } from "@/types/project";
 
+const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
+
 async function getProjects(): Promise<Project[]> {
-  const res = await fetch("http://localhost:8000/api/projects", {
+  const res = await fetch(`${BACKEND_URL}/api/projects`, {
     cache: "no-store",
   });
   if (!res.ok) throw new Error("プロジェクト一覧の取得に失敗しました");

@@ -1,12 +1,6 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import CreateProjectModal from "../../components/project/CreateProjectModal";
-
-interface Project {
-  id: number;
-  name: string;
-  description: string | null;
-  is_deleted: boolean;
-}
+import type { Project } from "../../types/project";
 
 describe("CreateProjectModal", () => {
   const onClose = jest.fn();

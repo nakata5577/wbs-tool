@@ -8,6 +8,7 @@ interface Props {
 }
 
 export default function Error({ error, reset }: Props): React.JSX.Element {
+  console.error("[Error] プロジェクト一覧の取得に失敗しました:", error);
   return (
     <PageShell>
       <div
@@ -15,7 +16,7 @@ export default function Error({ error, reset }: Props): React.JSX.Element {
         className="flex flex-col items-center gap-4 rounded-lg border border-destructive/30 bg-destructive/5 px-6 py-12 text-center"
       >
         <p className="text-sm text-destructive font-medium">プロジェクト一覧の取得に失敗しました</p>
-        <p className="text-xs text-muted-foreground">{error.message}</p>
+        <p className="text-xs text-muted-foreground">しばらくしてから再試行してください</p>
         <button
           onClick={reset}
           className="rounded-md border border-border px-4 py-1.5 text-sm hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"

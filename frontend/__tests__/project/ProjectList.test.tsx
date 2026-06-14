@@ -1,12 +1,6 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import ProjectList from "../../components/project/ProjectList";
-
-interface Project {
-  id: number;
-  name: string;
-  description: string | null;
-  is_deleted: boolean;
-}
+import type { Project } from "../../types/project";
 
 const sampleProjects: Project[] = [
   { id: 1, name: "Alpha プロジェクト", description: "説明A", is_deleted: false },
