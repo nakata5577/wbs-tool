@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { Project } from "@/types/project";
 
 interface Props {
@@ -15,6 +16,12 @@ export default function ProjectCard({ project }: Props): React.JSX.Element {
           {project.description}
         </p>
       )}
+      <Link
+        href={`/projects/${project.id}/wbs`}
+        className="mt-1 text-xs font-medium text-primary hover:underline"
+      >
+        WBS を開く →
+      </Link>
     </div>
   );
 }
