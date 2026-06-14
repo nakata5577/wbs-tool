@@ -2,7 +2,7 @@
 title: API 設計
 area: api
 status: active
-relatedIssues: [10]
+relatedIssues: [10, 11]
 updated: 2026-06-14
 kind: api
 ---
@@ -35,8 +35,8 @@ flowchart LR
 | GET | `/health` | ヘルスチェック |
 | GET | `/api/projects` | プロジェクト一覧 |
 | POST | `/api/projects` | プロジェクト作成 |
-| GET | `/api/projects/{id}` | プロジェクト詳細 |
-| PUT | `/api/projects/{id}` | プロジェクト更新 |
+| GET | `/api/projects/{id}` | プロジェクト詳細（Issue #12 以降） |
+| PATCH | `/api/projects/{id}` | プロジェクト部分更新（name/description） |
 | DELETE | `/api/projects/{id}` | プロジェクト削除（論理） |
 | GET | `/api/projects/{id}/tasks` | タスク一覧（階層付き） |
 | POST | `/api/projects/{id}/tasks` | タスク作成 |
@@ -57,14 +57,30 @@ flowchart LR
 | PUT | `/api/notifications/{id}/read` | 既読更新（1 件） |
 | PUT | `/api/notifications/read-all` | 全既読 |
 
+## データフロー・主要シーケンス
+
+```mermaid
+sequenceDiagram
+    Client->>Router: HTTP Request
+    Router->>Session: get_db() dependency
+    Session->>DB: SQL query (SQLAlchemy sync)
+    DB-->>Session: result
+    Session-->>Router: Project rows
+    Router-->>Client: JSON response
+```
+
 ## 外部依存・インターフェース
 
 - Pydantic スキーマ（`app/schemas/`）がリクエスト/レスポンスの型を定義
 - SQLAlchemy モデル（`app/models/`）がデータアクセスを担当
+- `app/database.py`: `engine`（`DATABASE_URL` 環境変数）と `get_db()` 依存関数を提供
 
 ## 主要な設計判断
 
 - **リソース中心の REST 設計**: タスクはプロジェクト配下（`/projects/{id}/tasks`）で作成し、個別操作は `/tasks/{id}` で行う（プロジェクトIDの再指定不要）。
 - **DELETE は 204 No Content**: 論理削除のため DB には残るが、クライアントには削除完了として返す。
+- **PATCH（部分更新）を使用**: プロジェクト更新は `PATCH /api/projects/{id}`（name/description のみ Optional）。全フィールド送信を強制する PUT より柔軟。
+- **同期 SQLAlchemy セッション**: async ドライバー（aiosqlite 等）は導入しない。FastAPI の `Depends(get_db)` で同期セッションを注入し、テストでは依存を上書き（in-memory SQLite）してスピードを確保。
 - **ページネーション**: 初期リリースはシンプルにオフセットベース（`?skip=0&limit=100`）。大規模データが想定されない社内ツールのため。
 - **通知はサーバープッシュしない**: WebSocket・SSE は初期スコープ外。ポーリング（画面描画時に GET /api/notifications）で対応。
+- **GET /projects/{id}（詳細）は Issue #11 スコープ外**: AC5 の「詳細 API」は記述ミス。PATCH/DELETE の 404 のみカバー。詳細エンドポイントは後続 Issue で実装する。
