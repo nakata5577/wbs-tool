@@ -1,0 +1,56 @@
+{
+  "$schema": "./project-profile.schema.json",
+  "templateVersion": "v1.5.0",
+  "templateOrigin": "",
+  "name": "wbs-tool",
+  "kind": "web",
+  "languages": ["typescript", "python"],
+  "packageManager": "npm, uv",
+  "commands": {
+    "build": "cd frontend && npm run build",
+    "test": "(cd frontend && npm test -- --watchAll=false) && (cd backend && uv run pytest)",
+    "dev": "cd frontend && npm run dev",
+    "lint": "(cd frontend && npm run lint) && (cd backend && uv run ruff check .)",
+    "format": "(cd frontend && npm run format) && (cd backend && uv run ruff format .)",
+    "migration": "cd backend && uv run alembic upgrade head",
+    "integrationTest": "",
+    "coverage": "",
+    "deploy": ""
+  },
+  "vcsHost": "github",
+  "defaultBranch": "develop",
+  "protectedBranches": ["develop", "main"],
+  "protectedGlobs": [
+    "frontend/src/components/ui/**",
+    "frontend/src/types/api.d.ts"
+  ],
+  "frontendDir": "frontend",
+  "frontendDirs": [],
+  "checks": [
+    { "match": "**/frontend/**/*.ts", "command": "cd frontend && npx tsc --noEmit", "cwdFromRoot": true, "timeout": 60 },
+    { "match": "**/frontend/**/*.tsx", "command": "cd frontend && npx tsc --noEmit", "cwdFromRoot": true, "timeout": 60 },
+    { "match": "**/backend/**/*.py", "command": "cd backend && uv run pytest --tb=short -q", "cwdFromRoot": true, "timeout": 60 }
+  ],
+  "services": [],
+  "commitMessage": {
+    "enabled": true,
+    "types": ["feat", "fix", "docs", "style", "refactor", "perf", "test", "chore", "build", "ci", "revert"],
+    "requireScope": true,
+    "requireBody": true,
+    "bodyExemptTypes": [],
+    "footer": "Refs",
+    "ticketBranchPattern": "^[a-z]+/(\\d+)-"
+  },
+  "designDoc": {
+    "enabled": true,
+    "dir": "docs/design",
+    "enforceTypes": ["feat", "fix"],
+    "escapeKeyword": "Design: none"
+  },
+  "docsSite": {
+    "enabled": true,
+    "dir": "docs-site",
+    "designGlob": "docs/design",
+    "checkCommand": ["npm", "run", "check"]
+  }
+}
