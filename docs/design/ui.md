@@ -1,8 +1,8 @@
 ---
 title: UI/画面設計
 area: ui
-status: draft
-relatedIssues: []
+status: active
+relatedIssues: [12]
 updated: 2026-06-14
 kind: ui
 ---
@@ -125,10 +125,84 @@ Storybook（`npm run storybook`、port 6006）で状態別カタログを管理�
 
 | 画面 | 日付 | ファイル |
 |------|------|--------|
-| ベースライン（デスクトップ） | 2026-06-14 | [baseline-desktop.png](../screenshots/baseline-desktop.png) |
-| ベースライン（モバイル参考） | 2026-06-14 | [baseline-mobile.png](../screenshots/baseline-mobile.png) |
+| プロジェクト一覧（デスクトップ 1280px） | 2026-06-14 | [12-project-list-desktop-after.png](../screenshots/12-project-list-desktop-after.png) |
+| プロジェクト一覧（モバイル 375px） | 2026-06-14 | [12-project-list-mobile-after.png](../screenshots/12-project-list-mobile-after.png) |
 
 UI 変更時は `frontend-reviewer` でスクリーンショットを取得し `docs/screenshots/` に保存して本表を更新する。
+
+## プロジェクト一覧・作成画面（Issue #12）
+
+### 画面構成・ワイヤーフレーム
+
+```
+┌─────────────────────────────────────────────────────┐
+│ プロジェクト一覧                       [+ 新規プロジェクト] │
+│ [🔍 プロジェクトを検索...]                               │
+├─────────────────────────────────────────────────────┤
+│ ┌──────────────────┐  ┌──────────────────┐          │
+│ │ プロジェクトA        │  │ プロジェクトB        │          │
+│ │ 説明テキスト（任意）  │  │ 説明テキスト（任意）  │          │
+│ └──────────────────┘  └──────────────────┘          │
+│                                                     │
+│ ┌─────────────────────────────────────────────┐     │
+│ │   プロジェクトがありません                          │     │
+│ │   [最初のプロジェクトを作成する]                     │     │
+│ └─────────────────────────────────────────────┘     │
+└─────────────────────────────────────────────────────┘
+```
+
+**モーダル（新規プロジェクト作成）:**
+```
+┌────────────────────────────────────┐
+│ 新規プロジェクト作成             [×] │
+├────────────────────────────────────┤
+│ プロジェクト名 *                     │
+│ [入力欄（最大100文字）           ]   │
+│ ※ バリデーションエラー: role=alert   │
+│                                    │
+│ 説明（任意）                          │
+│ [テキストエリア                  ]   │
+│                                    │
+│         [キャンセル]  [作成]          │
+└────────────────────────────────────┘
+```
+
+### コンポーネント分割
+
+| コンポーネント | 種別 | 責務 |
+|------------|------|------|
+| `app/page.tsx` | Server Component | プロジェクト一覧の初期データフェッチ（`GET /api/projects`） |
+| `app/loading.tsx` | Server Component | ローディング中のスケルトン（カード3件分、Next.js App Router） |
+| `app/error.tsx` | Client Component | API エラー時の `role="alert"` バナー + 再試行ボタン |
+| `components/layout/PageShell.tsx` | Server Component | ページ共通レイアウト（`min-h-screen`・最大幅コンテナ） |
+| `components/project/ProjectList.tsx` | Client Component (`"use client"`) | 検索フィルタ状態管理・カード一覧表示・モーダル開閉 |
+| `components/project/ProjectCard.tsx` | Server Component | 1件分のカード表示（名前・説明） |
+| `components/project/CreateProjectModal.tsx` | Client Component | 新規作成モーダル（shadcn/ui `<Dialog>`）・`<form>` バリデーション |
+| `components/project/layout.ts` | — | カードグリッドの CSS クラス定数（`PROJECT_GRID_CLASS`） |
+
+### 状態設計
+
+| 状態 | 表示内容 | 実装 |
+|------|---------|------|
+| ローディング | スケルトン（カード3件分） | `loading.tsx`（Next.js App Router） |
+| 空 | 「プロジェクトがありません」 + CTA ボタン | `projects.length === 0` の分岐 |
+| 通常 | カードグリッド（2〜3列） | `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3` |
+| エラー | `role="alert"` バナー + 再試行ボタン | `error.tsx`（Next.js App Router） |
+| モーダル | 作成フォーム | `useState` で `open` 管理 |
+| バリデーションエラー | `role="alert"` のエラーメッセージ | `useState` による直接管理 |
+
+### レスポンシブ
+
+- `grid-cols-1`（375px〜）→ `sm:grid-cols-2`（640px〜）→ `lg:grid-cols-3`（1024px〜）
+- 375px では1列に折りたたみ、横スクロールなし（最低限対応：モバイル最適化は対象外）
+
+### 使用する shadcn/ui コンポーネント
+
+追加インストールが必要: `Dialog`, `Input`, `Textarea`, `Label`, `Skeleton`
+
+```bash
+cd frontend && npx shadcn add dialog input textarea label skeleton
+```
 
 ## 主要な設計判断
 
@@ -136,3 +210,6 @@ UI 変更時は `frontend-reviewer` でスクリーンショットを取得し `
 - **RSC（Server Components）でのデータフェッチ**: 初期描画はサーバーコンポーネントで行い、ハイドレーション量を最小化。インタラクティブな部分（D&D・インライン編集）のみ `"use client"` で切り出す。
 - **デスクトップ優先**: 全機能を 1280px 以上で最適化。モバイル/タブレットは対象外（要件で明示的にスコープ外）。
 - **楽観的更新を採用しない**: 実装シンプルさ優先。保存完了後にサーバーレスポンスで画面を更新する。
+- **Issue #12: カードグリッドレイアウト採用**: Linear/Notion に近いビジュアルでプロジェクトを把握しやすい。情報密度よりも一目でわかる視覚的なカード形式を優先。
+- **Issue #12: クライアント側検索**: 検索ごとにAPIを呼ばず `Array.filter()` で処理。プロジェクト数が少ない（10人以下チーム）前提のため、パフォーマンス上問題なし。
+- **Issue #12: 375px 最低限対応**: 要件定義書でモバイル最適化は対象外だが、横スクロールが出ない程度の最低限対応（1列グリッドに折りたたむ）を実施する（Issue AC#6 の要件と整合）。
