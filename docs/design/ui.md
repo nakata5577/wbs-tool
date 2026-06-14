@@ -2,7 +2,7 @@
 title: UI/画面設計
 area: ui
 status: active
-relatedIssues: [12, 14]
+relatedIssues: [12, 14, 15]
 updated: 2026-06-14
 kind: ui
 ---
@@ -127,6 +127,8 @@ Storybook（`npm run storybook`、port 6006）で状態別カタログを管理�
 |------|------|--------|
 | プロジェクト一覧（デスクトップ 1280px） | 2026-06-14 | [12-project-list-desktop-after.png](../screenshots/12-project-list-desktop-after.png) |
 | プロジェクト一覧（モバイル 375px） | 2026-06-14 | [12-project-list-mobile-after.png](../screenshots/12-project-list-mobile-after.png) |
+| WBS エディタ（デスクトップ 1440px） | 2026-06-14 | [15-wbs-desktop-after.png](../screenshots/15-wbs-desktop-after.png) |
+| WBS エディタ（モバイル 375px） | 2026-06-14 | [15-wbs-mobile-after.png](../screenshots/15-wbs-mobile-after.png) |
 
 UI 変更時は `frontend-reviewer` でスクリーンショットを取得し `docs/screenshots/` に保存して本表を更新する。
 
@@ -310,7 +312,7 @@ flattenVisible(nodes: TreeNode[], collapsedIds: Set<number>): FlatRow[]
 - **shadcn/ui 採用**: カスタマイズ性の高い既製 UI コンポーネントを流用し、デザイン実装コストを最小化。`components/ui/` は自動生成のため直接編集しない。
 - **RSC（Server Components）でのデータフェッチ**: 初期描画はサーバーコンポーネントで行い、ハイドレーション量を最小化。インタラクティブな部分（D&D・インライン編集）のみ `"use client"` で切り出す。
 - **デスクトップ優先**: 全機能を 1280px 以上で最適化。モバイル/タブレットは対象外（要件で明示的にスコープ外）。
-- **楽観的更新を採用しない**: 実装シンプルさ優先。保存完了後にサーバーレスポンスで画面を更新する。
+- **楽観的更新を採用しない（D&D を除く）**: 実装シンプルさ優先。保存完了後にサーバーレスポンスで画面を更新する。D&D 並び替えのみ例外（操作感のため楽観的更新＋失敗時ロールバック方式を採用、Issue #15）。
 - **Issue #12: カードグリッドレイアウト採用**: Linear/Notion に近いビジュアルでプロジェクトを把握しやすい。情報密度よりも一目でわかる視覚的なカード形式を優先。
 - **Issue #12: クライアント側検索**: 検索ごとにAPIを呼ばず `Array.filter()` で処理。プロジェクト数が少ない（10人以下チーム）前提のため、パフォーマンス上問題なし。
 - **Issue #12: 375px 最低限対応**: 要件定義書でモバイル最適化は対象外だが、横スクロールが出ない程度の最低限対応（1列グリッドに折りたたむ）を実施する（Issue AC#6 の要件と整合）。
@@ -318,3 +320,81 @@ flattenVisible(nodes: TreeNode[], collapsedIds: Set<number>): FlatRow[]
 - **Issue #14: ProjectCard → /projects/[id]/wbs 直接リンク**: ダッシュボードページ（`/projects/[id]`）は将来の Issue で追加。Issue #14 のスコープを WBS エディタ本体に絞る。
 - **Issue #14: buildTree / flattenVisible 分離**: ツリー変換ロジックをコンポーネントから分離して `lib/taskTree.ts` に置く（単体テスト対象）。
 - **Issue #14: Enter で現在フォーカス行直下に追加**: Notion/Linear スタイルの操作感。`parent_id` は追加元タスクと同じ親を引き継ぐ（兄弟として追加）。
+- **Issue #15: ドロップゾーン方式（案A）採用**: 各行の上1/3＝「前に兄弟挿入」ゾーン、中1/3＝「後に兄弟挿入」ゾーン、下1/3＝「子にする」ゾーンの3等分で判定（`h-1/3` × 3段の絶対配置 DropZone）。水平オフセット方式（案B）より実装が明確で UX も直感的。
+- **Issue #15: PATCH /api/tasks/{id}/move 新エンドポイント**: sort_order + parent_id を1回で更新。既存 /sort エンドポイント（sort_order のみ）を汚染しない。
+- **Issue #15: 楽観的更新採用**: ドロップ直後に UI を即時更新しロールバックは API 失敗時のみ（D&D の操作感を損なわないため。既存の「楽観的更新を採用しない」方針の例外）。
+
+## WBS ドラッグ＆ドロップ（Issue #15）
+
+### 画面構成・ワイヤーフレーム
+
+```
+ドラッグ中のイメージ:
+┌─────────────────────────────────────────────┐
+│ ≡  タスク A              [ドラッグ中・半透明]  │  ← ドラッグ元（ghostとして残る）
+├─────────────────────────────────────────────┤
+│  ↑ ここに挿入（兄弟・前）─────────────────── │  ← ハイライト線（前ゾーン）
+│ ≡  タスク B                             🗑  │
+│     └─ ここに↴（子にする）──────────────── │  ← インデント付きハイライト線（子ゾーン）
+│  ↓ ここに挿入（兄弟・後）─────────────────  │  ← ハイライト線（後ゾーン）
+└─────────────────────────────────────────────┘
+
+各ゾーンの判定（ホバー位置のY座標比率）:
+  0% ─── 33%  → 「前に兄弟挿入」（parent_id = ドロップ先の親と同じ）
+  34% ── 66%  → 「後に兄弟挿入」（parent_id = ドロップ先の親と同じ）
+  67% ── 100% → 「子にする」（parent_id = ドロップ先のタスクID）
+```
+
+### コンポーネント分割
+
+| コンポーネント | 種別 | 責務 |
+|------------|------|------|
+| `components/wbs/TaskTreeTable.tsx` | Client Component | D&D コンテキスト（`DndContext`）・`DraggableTaskRow`・`DropZone`（ファイル内定義）・ドロップゾーン判定・API 呼び出し・ロールバック管理を含む |
+| `DraggableTaskRow`（`TaskTreeTable.tsx` 内） | — | `useDraggable` を持つ1行コンポーネント（ドラッグハンドル・DropZone 配置） |
+| `DropZone`（`TaskTreeTable.tsx` 内） | — | `useDroppable` を持つドロップ受け皿。ドラッグ非活性時は `pointer-events-none` で通常操作を阻害しない |
+| `lib/taskTree.ts` | — | `reorderTasks()` を追加: ドロップ結果から新しいタスク配列（sort_order・parent_id 更新済み）を計算 |
+
+### 状態設計（追加分）
+
+```typescript
+// TaskTreeTable.tsx に追加するステート
+const [draggingId, setDraggingId] = useState<number | null>(null)
+const [tasksBeforeDrag, setTasksBeforeDrag] = useState<Task[]>([])  // ロールバック用スナップショット
+```
+
+### D&D フロー
+
+```mermaid
+sequenceDiagram
+    participant U as ユーザー
+    participant CC as TaskTreeTable
+    participant LIB as reorderTasks()
+    participant API as PATCH /move
+
+    U->>CC: ドラッグ開始（onDragStart）
+    CC->>CC: tasksBeforeDrag にスナップショット保存
+    U->>CC: ドロップ（onDragEnd）
+    CC->>LIB: reorderTasks(tasks, dragId, dropId, zone)
+    LIB-->>CC: 新しい tasks 配列（sort_order・parent_id 更新済み）
+    CC->>CC: setTasks(新配列)（楽観的更新）
+    CC->>API: PATCH /api/tasks/{dragId}/move { sort_order, parent_id }
+    alt API 成功
+        API-->>CC: 200 OK
+    else API 失敗
+        API-->>CC: エラー
+        CC->>CC: setTasks(tasksBeforeDrag)（ロールバック）
+        CC->>CC: setErrorMessage（role=alert 表示）
+    end
+```
+
+### API 変更（バックエンド）
+
+- **新スキーマ** `TaskMoveUpdate`: `{ sort_order: int, parent_id: int | None }`
+- **新エンドポイント** `PATCH /api/tasks/{task_id}/move`: sort_order と parent_id を一括更新
+
+### アクセシビリティ（D&D 追加分）
+
+- ドラッグハンドルに `aria-label="ドラッグして並べ替え"` を付与
+- ドラッグ中は `aria-grabbed` 属性を管理（@dnd-kit がデフォルトで対応）
+- キーボードドラッグ対応（`KeyboardSensor`）: Space で掴み・矢印キーで移動・Space で離す
+- 注: `aria-dropeffect` は ARIA 1.1 以降 deprecated のため使用しない（@dnd-kit の内部 ARIA 管理に委ねる）

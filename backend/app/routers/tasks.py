@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.project import Project
 from app.models.task import Task
-from app.schemas.task import TaskCreate, TaskResponse, TaskSortUpdate, TaskUpdate
+from app.schemas.task import TaskCreate, TaskMoveUpdate, TaskResponse, TaskSortUpdate, TaskUpdate
 
 router = APIRouter(tags=["tasks"])
 
@@ -132,6 +132,57 @@ def update_task_sort(
 ) -> Task:
     task = _get_active_task_or_404(task_id, db)
     task.sort_order = body.sort_order
+    db.commit()
+    db.refresh(task)
+    return task
+
+
+@router.patch("/api/tasks/{task_id}/move", response_model=TaskResponse)
+def move_task(task_id: int, body: TaskMoveUpdate, db: Session = Depends(get_db)) -> Task:
+    task = _get_active_task_or_404(task_id, db)
+
+    if body.parent_id == task_id:
+        raise HTTPException(status_code=400, detail="タスクを自分自身の親にはできません")
+
+    if body.parent_id is not None:
+        parent = (
+            db.query(Task)
+            .filter(
+                Task.id == body.parent_id,
+                Task.project_id == task.project_id,
+                Task.is_deleted.is_(False),
+            )
+            .first()
+        )
+        if parent is None:
+            raise HTTPException(status_code=400, detail="parent_id が無効です")
+        # 循環参照チェック: parent の祖先を辿り task_id が含まれないか確認
+        ancestor_id: int | None = parent.parent_id
+        while ancestor_id is not None:
+            if ancestor_id == task_id:
+                raise HTTPException(status_code=400, detail="循環参照になるため移動できません")
+            ancestor = db.query(Task).filter(Task.id == ancestor_id).first()
+            ancestor_id = ancestor.parent_id if ancestor else None
+
+    task.parent_id = body.parent_id
+
+    # 同じ親を持つシブリング（自身を除く）を sort_order 順に取得し、body.sort_order を挿入位置として再採番
+    siblings = (
+        db.query(Task)
+        .filter(
+            Task.project_id == task.project_id,
+            Task.parent_id == body.parent_id,
+            Task.id != task_id,
+            Task.is_deleted.is_(False),
+        )
+        .order_by(Task.sort_order)
+        .all()
+    )
+    insert_idx = min(body.sort_order, len(siblings))
+    siblings.insert(insert_idx, task)
+    for i, sibling in enumerate(siblings):
+        sibling.sort_order = i
+
     db.commit()
     db.refresh(task)
     return task

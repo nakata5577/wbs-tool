@@ -14,3 +14,4 @@
 - プロジェクト一覧・作成画面: カードグリッド一覧（3列/1列レスポンシブ）・クライアント側検索・新規作成モーダル (#12)
 - WBS タスク CRUD API: `GET /api/projects/{id}/tasks`・`POST /api/projects/{id}/tasks`・`PATCH /api/tasks/{id}`・`DELETE /api/tasks/{id}`（子孫連鎖論理削除）・`PATCH /api/tasks/{id}/sort`（並び順変更）(#13)
 - WBS エディタ基本機能: タスク追加・インライン編集・削除（子孫カスケード）・折りたたみ/展開・全展開/全折りたたみ・空状態表示（プロジェクトカードから `/projects/:id/wbs` へのリンク付き）(#14)
+- WBS ドラッグ＆ドロップ: @dnd-kit によるタスク行の並び替え（sort_order）と階層変更（parent_id）。ドロップ先ゾーン（before/after/child）で位置と親子関係を決定し、楽観的更新＋API 失敗時ロールバック・`role=alert` エラー表示（`PATCH /api/tasks/{id}/move`）(#15)

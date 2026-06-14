@@ -452,3 +452,146 @@ async def test_patch_sort_not_found_returns_404():
         )
     # then
     assert response.status_code == 404
+
+
+# ── Issue #15: PATCH /api/tasks/{id}/move ─────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_move_task_updates_sort_order_and_parent_id():
+    """PATCH /api/tasks/{id}/move — sort_order と parent_id が更新される（200）"""
+    async with AsyncClient(transport=TRANSPORT, base_url=BASE_URL) as client:
+        # given
+        project_id = await _create_project(client)
+        root_res = await client.post(
+            f"/api/projects/{project_id}/tasks", json={"name": "ルート", "sort_order": 0}
+        )
+        child_candidate_res = await client.post(
+            f"/api/projects/{project_id}/tasks", json={"name": "子候補", "sort_order": 1}
+        )
+        root_id = root_res.json()["id"]
+        child_candidate_id = child_candidate_res.json()["id"]
+        # when: 子候補をルートの子にする（child ゾーン相当）
+        response = await client.patch(
+            f"/api/tasks/{child_candidate_id}/move",
+            json={"sort_order": 0, "parent_id": root_id},
+        )
+    # then
+    assert response.status_code == 200
+    body = response.json()
+    assert body["parent_id"] == root_id
+    assert body["sort_order"] == 0
+
+
+@pytest.mark.asyncio
+async def test_move_task_reorders_siblings():
+    """PATCH /api/tasks/{id}/move — 移動後にシブリングが再採番される"""
+    async with AsyncClient(transport=TRANSPORT, base_url=BASE_URL) as client:
+        # given: A(0), B(1), C(2) の 3 タスク
+        project_id = await _create_project(client)
+        a_id = (
+            await client.post(
+                f"/api/projects/{project_id}/tasks", json={"name": "A", "sort_order": 0}
+            )
+        ).json()["id"]
+        b_id = (
+            await client.post(
+                f"/api/projects/{project_id}/tasks", json={"name": "B", "sort_order": 1}
+            )
+        ).json()["id"]
+        c_id = (
+            await client.post(
+                f"/api/projects/{project_id}/tasks", json={"name": "C", "sort_order": 2}
+            )
+        ).json()["id"]
+        # when: C を A の前（sort_order=0 に挿入）
+        await client.patch(
+            f"/api/tasks/{c_id}/move",
+            json={"sort_order": 0, "parent_id": None},
+        )
+        # then: 一覧取得で C, A, B の順になっている
+        list_res = await client.get(f"/api/projects/{project_id}/tasks")
+    assert list_res.status_code == 200
+    names = [t["name"] for t in list_res.json()]
+    assert names == ["C", "A", "B"]
+    sorts = [t["sort_order"] for t in list_res.json()]
+    assert sorts == [0, 1, 2]
+    _ = a_id, b_id  # suppress unused warnings
+
+
+@pytest.mark.asyncio
+async def test_move_task_not_found_returns_404():
+    """PATCH /api/tasks/{id}/move — 存在しない ID は 404"""
+    async with AsyncClient(transport=TRANSPORT, base_url=BASE_URL) as client:
+        response = await client.patch(
+            "/api/tasks/999/move",
+            json={"sort_order": 0, "parent_id": None},
+        )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_move_task_self_parent_returns_400():
+    """PATCH /api/tasks/{id}/move — 自分自身を parent_id に指定すると 400"""
+    async with AsyncClient(transport=TRANSPORT, base_url=BASE_URL) as client:
+        # given
+        project_id = await _create_project(client)
+        task_res = await client.post(
+            f"/api/projects/{project_id}/tasks", json={"name": "タスク"}
+        )
+        task_id = task_res.json()["id"]
+        # when
+        response = await client.patch(
+            f"/api/tasks/{task_id}/move",
+            json={"sort_order": 0, "parent_id": task_id},
+        )
+    # then
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_move_task_cross_project_parent_returns_400():
+    """PATCH /api/tasks/{id}/move — 別プロジェクトのタスクを parent_id に指定すると 400"""
+    async with AsyncClient(transport=TRANSPORT, base_url=BASE_URL) as client:
+        # given: 2 プロジェクト
+        project_a_id = await _create_project(client)
+        project_b_id = await _create_project(client)
+        task_a_res = await client.post(
+            f"/api/projects/{project_a_id}/tasks", json={"name": "プロジェクトAのタスク"}
+        )
+        task_b_res = await client.post(
+            f"/api/projects/{project_b_id}/tasks", json={"name": "プロジェクトBのタスク"}
+        )
+        task_a_id = task_a_res.json()["id"]
+        task_b_id = task_b_res.json()["id"]
+        # when: task_a を task_b（別プロジェクト）の子にしようとする
+        response = await client.patch(
+            f"/api/tasks/{task_a_id}/move",
+            json={"sort_order": 0, "parent_id": task_b_id},
+        )
+    # then
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_move_task_circular_reference_returns_400():
+    """PATCH /api/tasks/{id}/move — 循環参照になる移動は 400"""
+    async with AsyncClient(transport=TRANSPORT, base_url=BASE_URL) as client:
+        # given: Parent → Child の親子関係
+        project_id = await _create_project(client)
+        parent_res = await client.post(
+            f"/api/projects/{project_id}/tasks", json={"name": "親タスク"}
+        )
+        parent_id = parent_res.json()["id"]
+        child_res = await client.post(
+            f"/api/projects/{project_id}/tasks",
+            json={"name": "子タスク", "parent_id": parent_id},
+        )
+        child_id = child_res.json()["id"]
+        # when: 親タスクを子タスクの子にしようとする（循環参照）
+        response = await client.patch(
+            f"/api/tasks/{parent_id}/move",
+            json={"sort_order": 0, "parent_id": child_id},
+        )
+    # then
+    assert response.status_code == 400
