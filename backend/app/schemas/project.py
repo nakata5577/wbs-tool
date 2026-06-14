@@ -2,12 +2,12 @@ from pydantic import BaseModel, Field, model_validator
 
 
 class ProjectCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
+    name: str = Field(..., min_length=1, max_length=100)
     description: str | None = None
 
 
 class ProjectUpdate(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=255)
+    name: str | None = Field(None, min_length=1, max_length=100)
     description: str | None = None
 
     @model_validator(mode="after")
