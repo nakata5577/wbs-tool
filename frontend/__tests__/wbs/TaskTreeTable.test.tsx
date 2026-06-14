@@ -51,6 +51,31 @@ describe("TaskTreeTable", () => {
       // then
       expect(screen.getByRole("textbox", { name: /タスク名/ })).toBeInTheDocument();
     });
+
+    it("TaskTreeTable_タスク名を入力してEnterを押したとき_APIに保存されてタスクが一覧に追加される", async () => {
+      // given
+      const newTask = makeTask({ id: 10, name: "新タスク" });
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => newTask,
+      });
+      render(<TaskTreeTable projectId={1} initialTasks={[]} />);
+      fireEvent.click(screen.getByRole("button", { name: /タスクを追加/ }));
+      const input = screen.getByRole("textbox", { name: /タスク名/ });
+      fireEvent.change(input, { target: { value: "新タスク" } });
+
+      // when
+      fireEvent.keyDown(input, { key: "Enter" });
+
+      // then
+      await waitFor(() => {
+        expect(fetch).toHaveBeenCalledWith(
+          "/api/projects/1/tasks",
+          expect.objectContaining({ method: "POST" }),
+        );
+        expect(screen.getByText("新タスク")).toBeInTheDocument();
+      });
+    });
   });
 
   describe("インライン編集（AC 2）", () => {
@@ -65,10 +90,34 @@ describe("TaskTreeTable", () => {
       // then
       expect(screen.getByDisplayValue("親タスク")).toBeInTheDocument();
     });
+
+    it("TaskTreeTable_タスク名を編集してEnterを押したとき_APIに保存されてタスク名が更新される", async () => {
+      // given
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => makeTask({ id: 1, name: "編集後タスク" }),
+      });
+      render(<TaskTreeTable projectId={1} initialTasks={[makeTask({ id: 1, name: "元の名前" })]} />);
+      fireEvent.click(screen.getByText("元の名前"));
+      const input = screen.getByDisplayValue("元の名前");
+      fireEvent.change(input, { target: { value: "編集後タスク" } });
+
+      // when
+      fireEvent.keyDown(input, { key: "Enter" });
+
+      // then
+      await waitFor(() => {
+        expect(fetch).toHaveBeenCalledWith(
+          "/api/tasks/1",
+          expect.objectContaining({ method: "PATCH" }),
+        );
+        expect(screen.getByText("編集後タスク")).toBeInTheDocument();
+      });
+    });
   });
 
   describe("タスク削除（AC 3）", () => {
-    it("TaskTreeTable_削除ボタンをクリックしたとき_タスクが一覧から消える", async () => {
+    it("TaskTreeTable_削除ボタンをクリックしたとき_正しいURLにDELETEが送られてタスクが一覧から消える", async () => {
       // given
       global.fetch = jest.fn().mockResolvedValue({
         ok: true,
@@ -82,6 +131,7 @@ describe("TaskTreeTable", () => {
 
       // then
       await waitFor(() => {
+        expect(fetch).toHaveBeenCalledWith("/api/tasks/1", { method: "DELETE" });
         expect(screen.queryByText("削除対象タスク")).not.toBeInTheDocument();
       });
     });

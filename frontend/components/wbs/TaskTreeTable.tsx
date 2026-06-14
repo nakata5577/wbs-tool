@@ -33,7 +33,7 @@ export default function TaskTreeTable({ projectId, initialTasks }: Props) {
 
   const handleDelete = async (id: number) => {
     setErrorMessage(null);
-    const res = await fetch(`/api/projects/${projectId}/tasks/${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/tasks/${id}`, { method: "DELETE" });
     if (!res.ok) {
       setErrorMessage("削除に失敗しました。もう一度お試しください。");
       return;
@@ -69,8 +69,43 @@ export default function TaskTreeTable({ projectId, initialTasks }: Props) {
     setEditingName(task.name);
   };
 
-  const commitEdit = () => {
+  const commitEdit = async () => {
+    if (editingId === null) return;
+    const trimmed = editingName.trim();
+    const original = tasks.find((t) => t.id === editingId);
+    if (!trimmed || (original && trimmed === original.name)) {
+      setEditingId(null);
+      return;
+    }
+    const res = await fetch(`/api/tasks/${editingId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: trimmed }),
+    });
+    if (!res.ok) {
+      setErrorMessage("更新に失敗しました。もう一度お試しください。");
+      setEditingId(null);
+      return;
+    }
+    setTasks((prev) => prev.map((t) => (t.id === editingId ? { ...t, name: trimmed } : t)));
     setEditingId(null);
+  };
+
+  const handleAddTask = async () => {
+    const trimmed = newTaskName.trim();
+    if (!trimmed) return;
+    const res = await fetch(`/api/projects/${projectId}/tasks`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: trimmed }),
+    });
+    if (!res.ok) {
+      setErrorMessage("追加に失敗しました。もう一度お試しください。");
+      return;
+    }
+    const task: Task = await res.json();
+    setTasks((prev) => [...prev, task]);
+    cancelAdding();
   };
 
   const cancelAdding = () => {
@@ -120,11 +155,18 @@ export default function TaskTreeTable({ projectId, initialTasks }: Props) {
             value={newTaskName}
             onChange={(e) => setNewTaskName(e.target.value)}
             onKeyDown={(e) => {
+              if (e.key === "Enter") handleAddTask();
               if (e.key === "Escape") cancelAdding();
             }}
             className="flex-1 bg-transparent text-sm outline-none"
             placeholder="タスク名を入力"
           />
+          <button
+            onClick={handleAddTask}
+            className="text-xs text-primary hover:text-primary/80"
+          >
+            追加
+          </button>
           <button
             onClick={cancelAdding}
             className="text-xs text-muted-foreground hover:text-foreground"
