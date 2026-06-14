@@ -102,6 +102,37 @@ describe("TaskDetailPanel", () => {
     });
   });
 
+  // 保存成功時に onSave コールバックが呼ばれる
+  describe("保存成功後の onSave 呼び出し", () => {
+    it("TaskDetailPanel_保存 API が 200 を返したとき_onSave が更新後タスクで呼ばれる", async () => {
+      // given
+      const updatedTask = makeTask({ id: 1, name: "サンプルタスク", assignee: "山田太郎" });
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => updatedTask,
+      });
+      const onClose = jest.fn();
+      const onSave = jest.fn();
+      render(
+        <TaskDetailPanel
+          task={sampleTask}
+          open={true}
+          onClose={onClose}
+          onSave={onSave}
+        />,
+      );
+
+      // when
+      fireEvent.click(screen.getByRole("button", { name: /保存/ }));
+
+      // then
+      await waitFor(() => {
+        expect(onSave).toHaveBeenCalledTimes(1);
+        expect(onSave).toHaveBeenCalledWith(updatedTask);
+      });
+    });
+  });
+
   // AC3: 開始日・終了日をカレンダーピッカーで入力して保存すると PATCH が呼ばれる
   describe("開始日・終了日入力（AC3）", () => {
     it("TaskDetailPanel_開始日を入力して保存したとき_start_date フィールドと共に PATCH が呼ばれる", async () => {

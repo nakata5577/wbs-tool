@@ -132,6 +132,7 @@ export default function TaskDetailPanel({ task, open, onClose, onSave }: Props) 
         <div className="flex items-center justify-between border-b px-6 py-4">
           <h2 id="task-detail-title" className="text-base font-medium text-foreground">タスク詳細</h2>
           <button
+            type="button"
             aria-label="閉じる"
             onClick={onClose}
             className="flex h-7 w-7 items-center justify-center rounded-md text-lg text-muted-foreground hover:bg-accent hover:text-foreground"
@@ -211,12 +212,14 @@ export default function TaskDetailPanel({ task, open, onClose, onSave }: Props) 
 
         <div className="flex items-center gap-2 border-t px-6 py-4">
           <button
+            type="button"
             onClick={handleSave}
             className="flex h-8 flex-1 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90"
           >
             保存
           </button>
           <button
+            type="button"
             onClick={onClose}
             className="flex h-8 flex-1 items-center justify-center rounded-lg border px-4 text-sm hover:bg-accent"
           >

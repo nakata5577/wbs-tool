@@ -1,8 +1,6 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import TaskTreeTable from "../../components/wbs/TaskTreeTable";
 import type { Task } from "../../types/task";
-// NOTE: TaskDetailPanel はまだ存在しないため、このimportはコンパイルエラー（Red）になる
-import TaskDetailPanel from "../../components/wbs/TaskDetailPanel";
 
 const makeTask = (overrides: Partial<Task> & { id: number; name: string }): Task => ({
   project_id: 1,
@@ -176,6 +174,3 @@ describe("TaskTreeTable", () => {
   });
 });
 
-// TaskDetailPanel の型チェック用（import が解決できることを検証する）
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _typeCheck: typeof TaskDetailPanel = TaskDetailPanel;

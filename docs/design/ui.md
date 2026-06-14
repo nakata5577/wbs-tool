@@ -112,7 +112,7 @@ shadcn/ui のデフォルト CSS 変数テーマを使用（`frontend/src/app/gl
 
 ## アクセシビリティ
 
-- **キーボード操作**: WBS ツリーは矢印キーで展開/折りたたみ対応。インライン編集は Enter で確定・Esc でキャンセル
+- **キーボード操作**: WBS ツリーは矢印キーで展開/折りたたみ対応。タスク詳細パネルは ESC で閉じる・Tab でフォーカストラップ
 - **コントラスト**: WCAG AA（4.5:1 以上）を維持（shadcn/ui デフォルトが対応済み）
 - **フォーム**: `aria-label` または関連 `<label>` を必ず付与
 - **エラー通知**: `role="alert"` でスクリーンリーダーに通知
@@ -234,12 +234,6 @@ cd frontend && npx shadcn add dialog input textarea label skeleton
 └─────────────────────────────────────────────────────────┘
 ```
 
-**インライン編集（タスク名クリック時）:**
-```
-│  ▼   │ [____________編集中__________] │  未着手   │  [🗑]   │
-│      │  ↳ Enter で確定 / Esc でキャンセル                   │
-```
-
 **Enter で新規行追加（現在フォーカス行の直下）:**
 ```
 │  ▼   │ タスク A                        │  未着手   │  [🗑]   │
@@ -255,7 +249,7 @@ cd frontend && npx shadcn add dialog input textarea label skeleton
 | `app/projects/[id]/wbs/loading.tsx` | — | スケルトン（テーブル行3件分） |
 | `app/projects/[id]/wbs/error.tsx` | Client Component | API エラー時の `role="alert"` バナー＋再試行 |
 | `components/wbs/TaskTreeTable.tsx` | Client Component | WBS テーブル本体（ツリー変換・展開/折りたたみ・タスク追加/削除）|
-| `components/wbs/TaskRow.tsx` | Client Component | 1行（インライン編集・削除ボタン・展開アイコン）|
+| `DraggableTaskRow`（`TaskTreeTable.tsx` 内） | — | 1行（タスク名クリックでパネル開く・削除ボタン・展開アイコン）|
 | `lib/taskTree.ts` | — | `buildTree()` / `flattenVisible()` ユーティリティ関数 |
 | `types/task.ts` | — | `Task` 型定義（バックエンド `TaskResponse` に対応） |
 
@@ -266,7 +260,7 @@ cd frontend && npx shadcn add dialog input textarea label skeleton
 ```typescript
 // TaskTreeTable.tsx 内
 const [tasks, setTasks] = useState<Task[]>(initialTasks)
-const [editingId, setEditingId] = useState<number | null>(null)
+const [selectedTask, setSelectedTask] = useState<Task | null>(null)
 const [collapsedIds, setCollapsedIds] = useState<Set<number>>(new Set())
 ```
 
@@ -309,13 +303,13 @@ flattenVisible(nodes: TreeNode[], collapsedIds: Set<number>): FlatRow[]
 ### アクセシビリティ
 
 - 展開/折りたたみアイコンに `aria-expanded` / `aria-label` を付与
-- インライン編集インプットに `aria-label="タスク名を編集"` を付与
+- タスク詳細パネルに `role="dialog"` / `aria-modal="true"` / `aria-labelledby` を付与
 - 削除ボタンに `aria-label="タスクを削除: {タスク名}"` を付与
 
 ## 主要な設計判断
 
 - **shadcn/ui 採用**: カスタマイズ性の高い既製 UI コンポーネントを流用し、デザイン実装コストを最小化。`components/ui/` は自動生成のため直接編集しない。
-- **RSC（Server Components）でのデータフェッチ**: 初期描画はサーバーコンポーネントで行い、ハイドレーション量を最小化。インタラクティブな部分（D&D・インライン編集）のみ `"use client"` で切り出す。
+- **RSC（Server Components）でのデータフェッチ**: 初期描画はサーバーコンポーネントで行い、ハイドレーション量を最小化。インタラクティブな部分（D&D・タスク詳細パネル）のみ `"use client"` で切り出す。
 - **デスクトップ優先**: 全機能を 1280px 以上で最適化。モバイル/タブレットは対象外（要件で明示的にスコープ外）。
 - **楽観的更新を採用しない（D&D を除く）**: 実装シンプルさ優先。保存完了後にサーバーレスポンスで画面を更新する。D&D 並び替えのみ例外（操作感のため楽観的更新＋失敗時ロールバック方式を採用、Issue #15）。
 - **Issue #12: カードグリッドレイアウト採用**: Linear/Notion に近いビジュアルでプロジェクトを把握しやすい。情報密度よりも一目でわかる視覚的なカード形式を優先。
@@ -407,7 +401,7 @@ sequenceDiagram
 
 ### 画面構成・ワイヤーフレーム
 
-タスク名クリックで右からスライドインするパネルを開く（インライン編集は廃止し、パネルで名前も編集可能）。
+タスク名クリックで右からスライドインするパネルを開く（インライン編集は廃止。タスク名はパネルで編集しない — Issue #16 スコープ外）。
 
 ```
 WBS エディタ（パネル閉時）:
