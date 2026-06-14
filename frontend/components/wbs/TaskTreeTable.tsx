@@ -339,7 +339,7 @@ export default function TaskTreeTable({ projectId, initialTasks }: Props) {
           onClose={() => setSelectedTask(null)}
           onSave={(updated) => {
             setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
-            setSelectedTask(updated);
+            setSelectedTask(null);
           }}
         />
       )}

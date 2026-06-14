@@ -95,23 +95,27 @@ export default function TaskDetailPanel({ task, open, onClose, onSave }: Props) 
 
   const handleSave = async () => {
     setError(null);
-    const res = await fetch(`/api/tasks/${task.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        assignee: assignee || null,
-        start_date: startDate || null,
-        end_date: endDate || null,
-        progress,
-        status,
-      }),
-    });
-    if (!res.ok) {
+    try {
+      const res = await fetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          assignee: assignee || null,
+          start_date: startDate || null,
+          end_date: endDate || null,
+          progress,
+          status,
+        }),
+      });
+      if (!res.ok) {
+        setError("保存に失敗しました。もう一度お試しください。");
+        return;
+      }
+      const updated: Task = await res.json();
+      onSave(updated);
+    } catch {
       setError("保存に失敗しました。もう一度お試しください。");
-      return;
     }
-    const updated: Task = await res.json();
-    onSave(updated);
   };
 
   return (

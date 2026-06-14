@@ -1,5 +1,4 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-// NOTE: TaskDetailPanel はまだ存在しないため、このimportはコンパイルエラー（Red）になる
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import TaskDetailPanel from "../../components/wbs/TaskDetailPanel";
 import type { Task } from "../../types/task";
 
@@ -274,7 +273,7 @@ describe("TaskDetailPanel", () => {
     });
   });
 
-  // AC6: パネル外をクリックまたは × ボタンでパネルを閉じる
+  // AC6（Issue）: × ボタン・キャンセルボタンでパネルを閉じる
   describe("パネルを閉じる（AC6）", () => {
     it("TaskDetailPanel_× ボタンをクリックしたとき_onClose が呼ばれる", () => {
       // given
@@ -314,6 +313,187 @@ describe("TaskDetailPanel", () => {
 
       // then
       expect(onClose).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // Issue AC5（ESC キー）
+  describe("ESC キーでパネルを閉じる（Issue AC5）", () => {
+    it("TaskDetailPanel_パネルが開いているとき ESC キーを押す_onClose が呼ばれる", () => {
+      // given
+      const onClose = jest.fn();
+      const onSave = jest.fn();
+      render(
+        <TaskDetailPanel
+          task={sampleTask}
+          open={true}
+          onClose={onClose}
+          onSave={onSave}
+        />,
+      );
+
+      // when
+      fireEvent.keyDown(document, { key: "Escape" });
+
+      // then
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it("TaskDetailPanel_パネルが閉じているとき ESC キーを押す_onClose は呼ばれない", () => {
+      // given
+      const onClose = jest.fn();
+      const onSave = jest.fn();
+      render(
+        <TaskDetailPanel
+          task={sampleTask}
+          open={false}
+          onClose={onClose}
+          onSave={onSave}
+        />,
+      );
+
+      // when
+      fireEvent.keyDown(document, { key: "Escape" });
+
+      // then
+      expect(onClose).not.toHaveBeenCalled();
+    });
+  });
+
+  // Issue AC9（自動フォーカス）
+  describe("パネルが開くと担当者フィールドに自動フォーカスする（Issue AC9）", () => {
+    it("TaskDetailPanel_open が true でレンダーしたとき_担当者入力フィールドにフォーカスが当たる", async () => {
+      // given
+      const onClose = jest.fn();
+      const onSave = jest.fn();
+
+      // when
+      await act(async () => {
+        render(
+          <TaskDetailPanel
+            task={sampleTask}
+            open={true}
+            onClose={onClose}
+            onSave={onSave}
+          />,
+        );
+      });
+
+      // then
+      const assigneeInput = screen.getByLabelText(/担当者/);
+      expect(document.activeElement).toBe(assigneeInput);
+    });
+  });
+
+  // Issue AC8（フォーカストラップ）
+  describe("Tab キーでフォーカスがパネル内に留まる（Issue AC8）", () => {
+    it("TaskDetailPanel_最後のフォーカス対象で Tab を押したとき_先頭要素にフォーカスが戻る", () => {
+      // given
+      const onClose = jest.fn();
+      const onSave = jest.fn();
+      render(
+        <TaskDetailPanel
+          task={sampleTask}
+          open={true}
+          onClose={onClose}
+          onSave={onSave}
+        />,
+      );
+      // パネル内フォーカス可能要素を取得
+      const panel = screen.getByRole("dialog");
+      const focusable = Array.from(
+        panel.querySelectorAll<HTMLElement>(
+          "button:not([disabled]), input:not([disabled]), select:not([disabled])",
+        ),
+      );
+      const lastElement = focusable[focusable.length - 1];
+      const firstElement = focusable[0];
+
+      // when: 最後の要素にフォーカスを当ててから Tab を押す
+      lastElement.focus();
+      fireEvent.keyDown(document, { key: "Tab", shiftKey: false });
+
+      // then: フォーカスが先頭要素に戻る
+      expect(document.activeElement).toBe(firstElement);
+    });
+
+    it("TaskDetailPanel_先頭のフォーカス対象で Shift+Tab を押したとき_末尾要素にフォーカスが移る", () => {
+      // given
+      const onClose = jest.fn();
+      const onSave = jest.fn();
+      render(
+        <TaskDetailPanel
+          task={sampleTask}
+          open={true}
+          onClose={onClose}
+          onSave={onSave}
+        />,
+      );
+      const panel = screen.getByRole("dialog");
+      const focusable = Array.from(
+        panel.querySelectorAll<HTMLElement>(
+          "button:not([disabled]), input:not([disabled]), select:not([disabled])",
+        ),
+      );
+      const firstElement = focusable[0];
+      const lastElement = focusable[focusable.length - 1];
+
+      // when: 先頭要素にフォーカスを当ててから Shift+Tab を押す
+      firstElement.focus();
+      fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+
+      // then: フォーカスが末尾要素に移る
+      expect(document.activeElement).toBe(lastElement);
+    });
+  });
+
+  // ネットワークエラーハンドリング
+  describe("ネットワークエラー時のエラー表示", () => {
+    it("TaskDetailPanel_fetch が例外を投げたとき_role=alert のエラーメッセージが表示される", async () => {
+      // given
+      global.fetch = jest.fn().mockRejectedValue(new Error("Network error"));
+      const onClose = jest.fn();
+      const onSave = jest.fn();
+      render(
+        <TaskDetailPanel
+          task={sampleTask}
+          open={true}
+          onClose={onClose}
+          onSave={onSave}
+        />,
+      );
+
+      // when
+      fireEvent.click(screen.getByRole("button", { name: /保存/ }));
+
+      // then
+      await waitFor(() => {
+        expect(screen.getByRole("alert")).toBeInTheDocument();
+        expect(screen.getByRole("alert")).toHaveTextContent("保存に失敗しました");
+      });
+    });
+
+    it("TaskDetailPanel_API が 500 を返したとき_role=alert のエラーメッセージが表示される", async () => {
+      // given
+      global.fetch = jest.fn().mockResolvedValue({ ok: false });
+      const onClose = jest.fn();
+      const onSave = jest.fn();
+      render(
+        <TaskDetailPanel
+          task={sampleTask}
+          open={true}
+          onClose={onClose}
+          onSave={onSave}
+        />,
+      );
+
+      // when
+      fireEvent.click(screen.getByRole("button", { name: /保存/ }));
+
+      // then
+      await waitFor(() => {
+        expect(screen.getByRole("alert")).toBeInTheDocument();
+        expect(screen.getByRole("alert")).toHaveTextContent("保存に失敗しました");
+      });
     });
   });
 });
