@@ -37,7 +37,7 @@ if (existsSync(docsDir)) {
   }
 }
 if (existsSync(`${docsDir}/design`)) {
-  sidebar.push({ label: '設計書', autogenerate: { directory: '../docs/design' } });
+  sidebar.push({ label: '設計書', items: [{ autogenerate: { directory: '../docs/design' } }] });
 }
 
 // https://astro.build/config
