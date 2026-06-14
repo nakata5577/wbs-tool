@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import projects
+from app.routers import projects, tasks
 
 app = FastAPI(title="WBS Tool API", version="0.1.0")
 
@@ -14,6 +14,7 @@ app.add_middleware(
 )
 
 app.include_router(projects.router)
+app.include_router(tasks.router)
 
 
 @app.get("/health")

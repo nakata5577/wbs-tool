@@ -12,3 +12,4 @@
 - FastAPI 初期設定: CORS・`GET /health`・グローバル例外ハンドラー（404/422 はFastAPIデフォルト）(#10)
 - プロジェクト CRUD API: `GET /api/projects`・`POST /api/projects`・`PATCH /api/projects/{id}`・`DELETE /api/projects/{id}`（論理削除）(#11)
 - プロジェクト一覧・作成画面: カードグリッド一覧（3列/1列レスポンシブ）・クライアント側検索・新規作成モーダル (#12)
+- WBS タスク CRUD API: `GET /api/projects/{id}/tasks`・`POST /api/projects/{id}/tasks`・`PATCH /api/tasks/{id}`・`DELETE /api/tasks/{id}`（子孫連鎖論理削除）・`PATCH /api/tasks/{id}/sort`（並び順変更）(#13)
