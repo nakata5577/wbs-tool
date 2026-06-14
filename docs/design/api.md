@@ -1,8 +1,8 @@
 ---
 title: API 設計
 area: api
-status: draft
-relatedIssues: []
+status: active
+relatedIssues: [10]
 updated: 2026-06-14
 kind: api
 ---
